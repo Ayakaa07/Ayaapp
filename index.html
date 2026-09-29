@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>音声で旅行スケジュール作成</title>
+  </head>
+  <body>
+    <h1>音声で旅行スケジュール作成</h1>
+    <p>「京都に3日間行きたい。清水寺と伏見稲荷には行きたい」のように話してください。</p>
+    <p>
+      音声はブラウザ内の
+      <a href="https://huggingface.co/onnx-community/whisper-tiny">Whisper tiny</a>
+      で文字起こしします。録音は最大30秒です。初回はモデル取得のためインターネット接続が必要です。
+    </p>
+
+    <p>
+      <button id="record-start" type="button">録音開始</button>
+      <button id="record-stop" type="button" disabled>録音停止</button>
+    </p>
+    <p id="status" role="status" aria-live="polite">WebGPU対応ブラウザとマイクが必要です。</p>
+
+    <p>
+      <label for="transcript">音声の文字起こし（確認・編集できます）</label><br />
+      <textarea id="transcript" rows="4" cols="60" placeholder="録音すると、ここに文字起こしが表示されます"></textarea>
+    </p>
+    <p><button id="apply-transcript" type="button">音声内容から条件を反映</button></p>
+
+    <p>
+      <label for="destination">行き先</label>
+      <input id="destination" type="text" autocomplete="off" placeholder="例: 京都" />
+    </p>
+    <p>
+      <label for="days">旅行日数</label>
+      <input id="days" type="number" min="1" max="14" step="1" value="1" />
+    </p>
+    <p>
+      <label for="must-see">必ず行きたい場所（1行に1か所。音声から抽出した内容を編集できます）</label><br />
+      <textarea id="must-see" rows="3" cols="60" placeholder="例: 清水寺&#10;伏見稲荷大社"></textarea>
+    </p>
+    <p><button id="make-plan" type="button">スケジュールを作る</button></p>
+
+    <div id="plan" aria-live="polite"></div>
+    <p>順番と時刻は距離をもとにした目安です。営業時間、交通機関、実際の移動時間は確認してください。</p>
+    <p>
+      観光地データ: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>（ODbL）。
+      音声は端末内で処理し、検索時には行き先と希望スポット名をOpenStreetMap APIへ送信します。
+    </p>
+    <p>
+      地名検索はスケジュール作成時だけ行います。Nominatim公開APIは利用量に制限があります。
+      <a href="https://operations.osmfoundation.org/policies/nominatim/">利用ポリシー</a>を確認してください。
+      利用が増えた場合は下の設定から別の互換APIへ切り替えてください。
+    </p>
+
+    <details>
+      <summary>地図データAPI設定</summary>
+      <p>互換サービスへ切り替える場合にエンドポイントを変更できます。設定はこのブラウザに保存します。</p>
+      <p><a href="https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances">Overpass APIの公開インスタンスと利用条件</a></p>
+      <p>
+        <label for="geocoder-endpoint">地名検索API（Nominatim互換）</label><br />
+        <input id="geocoder-endpoint" type="url" size="70" value="https://nominatim.openstreetmap.org/search" />
+      </p>
+      <p>
+        <label for="overpass-endpoint">観光地検索API（Overpass互換）</label><br />
+        <input id="overpass-endpoint" type="url" size="70" value="https://overpass-api.de/api/interpreter" />
+      </p>
+      <p><button id="save-api-settings" type="button">API設定を保存</button></p>
+    </details>
+
+    <script type="module">
+      import { env, pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
+
+      env.allowLocalModels = false;
+
+      const WHISPER_MODEL_ID = "onnx-community/whisper-tiny";
+      const SAMPLE_RATE = 16000;
+      const MAX_AUDIO_SECONDS = 30;
+      const DEFAULT_GEOCODER = "https://nominatim.openstreetmap.org/search";
+      const DEFAULT_OVERPASS = "https://overpass-api.de/api/interpreter";
+
+      const recordStartButton = document.querySelector("#record-start");
+      const recordStopButton = document.querySelector("#record-stop");
+      const transcriptInput = document.querySelector("#transcript");
+      const applyTranscriptButton = document.querySelector("#apply-transcript");
+      const destinationInput = document.querySelector("#destination");
+      const daysInput = document.querySelector("#days");
+      const mustSeeInput = document.querySelector("#must-see");
+      const makePlanButton = document.querySelector("#make-plan");
+      const status = document.querySelector("#status");
+      const planOutput = document.querySelector("#plan");
+      const geocoderEndpointInput = document.querySelector("#geocoder-endpoint");
+      const overpassEndpointInput = document.querySelector("#overpass-endpoint");
+      const saveApiSettingsButton = document.querySelector("#save-api-settings");
+
+      let busy = false;
+      let recording = false;
+      let leavingPage = false;
+      let recordingError = null;
+      let mediaRecorder = null;
+      let microphoneStream = null;
+      let recordingTimer = null;
+      let whisperPipeline = null;
+      let whisperPromise = null;
+      let lastGeocoderRequestAt = 0;
+
+      const geocoderCache = new Map();
+      const attractionCache = new Map();
+
+      const lockedControls = [
+        transcriptInput,
+        applyTranscriptButton,
+        destinationInput,
+        daysInput,
+        mustSeeInput,
+        makePlanButton,
+        geocoderEndpointInput,
+        overpassEndpointInput,
+        saveApiSettingsButton,
+      ];
+
+      function setStatus(message) {
+        status.textContent = message;
+      }
+
+      function updateControls() {
+        recordStartButton.disabled = busy || recording;
+        recordStopButton.disabled = busy || !recording;
+        for (const control of lockedControls) {
+          control.disabled = busy || recording;
+        }
+      }
+
+      function stopMicrophoneTracks() {
+        if (!microphoneStream) return;
+        for (const track of microphoneStream.getTracks()) {
+          track.stop();
+        }
+        microphoneStream = null;
+      }
+
+      function delay(milliseconds) {
+        return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+      }
+
+      async function runExclusive(task) {
+        if (busy || recording) return;
+        busy = true;
+        updateControls();
+        try {
+          await task();
+        } catch (error) {
+          console.error(error);
+          setStatus("エラー: " + (error.message || error));
+        } finally {
+          busy = false;
+          updateControls();
+        }
+      }
+
+      async function requireWebGPU() {
+        if (!navigator.gpu) {
+          throw new Error("このブラウザではWebGPUを利用できません。WebGPU対応ブラウザで開いてください。");
+        }
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+          throw new Error("WebGPU adapterを取得できません。");
+        }
+        return adapter;
+      }
+
+      function progressCallback(event) {
+        if (event.status === "progress" && Number.isFinite(event.progress)) {
+          const filename = event.file ? " (" + event.file + ")" : "";
+          setStatus("Whisperモデル取得中: " + event.progress.toFixed(0) + "%" + filename);
+        }
+      }
+
+      async function ensureWhisper() {
+        await requireWebGPU();
+        if (!whisperPromise) {
+          whisperPromise = pipeline(
+            "automatic-speech-recognition",
+            WHISPER_MODEL_ID,
+            {
+              device: "webgpu",
+              dtype: "q8",
+              progress_callback: progressCallback,
+            },
+          )
+            .then((model) => {
+              whisperPipeline = model;
+              return model;
+            })
+            .catch((error) => {
+              whisperPromise = null;
+              throw error;
+            });
+        }
+        return whisperPromise;
+      }
+
+      async function blobToMono16k(blob) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+          throw new Error("このブラウザでは音声を読み込めません。");
+        }
+
+        const audioContext = new AudioContextClass();
+        try {
+          const decoded = await audioContext.decodeAudioData(await blob.arrayBuffer());
+          const inputLength = Math.min(
+            decoded.length,
+            Math.floor(decoded.sampleRate * MAX_AUDIO_SECONDS),
+          );
+          if (inputLength < 1) {
+            throw new Error("録音に音声が含まれていません。");
+          }
+
+          const mono = new Float32Array(inputLength);
+          for (let channel = 0; channel < decoded.numberOfChannels; channel++) {
+            const channelData = decoded.getChannelData(channel);
+            for (let index = 0; index < inputLength; index++) {
+              mono[index] += channelData[index] / decoded.numberOfChannels;
+            }
+          }
+
+          const outputLength = Math.max(1, Math.floor(inputLength * SAMPLE_RATE / decoded.sampleRate));
+          const resampled = new Float32Array(outputLength);
+          const ratio = decoded.sampleRate / SAMPLE_RATE;
+          for (let index = 0; index < outputLength; index++) {
+            const sourcePosition = index * ratio;
+            const leftIndex = Math.floor(sourcePosition);
+            const rightIndex = Math.min(leftIndex + 1, inputLength - 1);
+            const fraction = sourcePosition - leftIndex;
+            resampled[index] = mono[leftIndex] * (1 - fraction) + mono[rightIndex] * fraction;
+          }
+          return resampled;
+        } finally {
+          await audioContext.close();
+        }
+      }
+
+      function japaneseNumberToInteger(value) {
+        if (/^[0-9]+$/u.test(value)) return Number(value);
+        const digits = {
+          "〇": 0, "零": 0, "一": 1, "二": 2, "三": 3, "四": 4,
+          "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+        };
+        let total = 0;
+        let current = 0;
+        for (const character of value) {
+          if (character === "十") {
+            total += (current || 1) * 10;
+            current = 0;
+          } else if (Object.hasOwn(digits, character)) {
+            current = digits[character];
+          } else {
+            return Number.NaN;
+          }
+        }
+        return total + current;
+      }
+
+      function tripDaysFromSpeech(text) {
+        const number = "[0-9]+|[〇零一二三四五六七八九十]+";
+        const dayMatch = text.match(new RegExp("(?:(?:" + number + ")\\s*泊\\s*)?(" + number + ")\\s*日(?:間)?", "u"));
+        if (dayMatch) return japaneseNumberToInteger(dayMatch[1]);
+
+        const nightMatch = text.match(new RegExp("(" + number + ")\\s*泊", "u"));
+        if (nightMatch) return japaneseNumberToInteger(nightMatch[1]) + 1;
+        return 1;
+      }
+
+      function withoutDuration(text) {
+        const number = "[0-9]+|[〇零一二三四五六七八九十]+";
+        return text.replace(
+          new RegExp("(?:(?:" + number + ")\\s*泊\\s*)?(?:" + number + ")\\s*日(?:間)?", "gu"),
+          " ",
+        );
+      }
+
+      function cleanDestination(value) {
+        return value
+          .replace(/^(?:私|わたし|僕|ぼく|自分)(?:は|が)?/u, "")
+          .replace(/^(?:行きたいところ|行きたい場所|行き先|旅行先|目的地)(?:は|が|を)?/u, "")
+          .replace(/(?:今週|来週|今月|来月|再来月|今年|来年)/gu, "")
+          .replace(/[0-9０-９]+月[0-9０-９]+日/gu, "")
+          .trim()
+          .replace(/(?:旅行|観光)(?:に|を|で)?$/u, "")
+          .replace(/(?:まで|から|に|へ|で|を|の|が|は|と)$/u, "")
+          .replace(/(?:旅行|観光)$/u, "")
+          .replace(/[\s、,，。！？!?]/gu, "")
+          .trim();
+      }
+
+      function destinationFromSpeech(text) {
+        const labeled = text.match(/(?:行きたいところ|行きたい場所|行き先|旅行先|目的地)(?:は|が|を)?\s*([^、。！？!?\n]+)/u);
+        if (labeled && labeled[1]) {
+          const cleaned = cleanDestination(withoutDuration(labeled[1]));
+          if (cleaned) return cleaned;
+        }
+
+        const textWithoutDuration = withoutDuration(text);
+        const travelIntent = /(?:行ってみたい|行きたい|行きたくて|旅行したい|旅行に行きたい|旅行する|行く予定|行こう(?:と思|と)|訪れたい|行き(?:、|，)|行って|観光する)/u.exec(textWithoutDuration);
+        let candidate = "";
+        if (travelIntent) {
+          const sentenceStart = Math.max(
+            textWithoutDuration.lastIndexOf("。", travelIntent.index),
+            textWithoutDuration.lastIndexOf("！", travelIntent.index),
+            textWithoutDuration.lastIndexOf("？", travelIntent.index),
+            textWithoutDuration.lastIndexOf("\n", travelIntent.index),
+          );
+          candidate = textWithoutDuration.slice(sentenceStart + 1, travelIntent.index);
+        } else {
+          candidate = textWithoutDuration
+            .split(/[。！？!?、，,\n]/u)
+            .find((part) => part.trim()) || "";
+        }
+
+        candidate = candidate
+          .replace(/(?:行きたいところ|行きたい場所|行き先|旅行先|目的地)(?:は|が|を)?/u, "")
+          .replace(/(?:今週|来週|今月|来月|再来月|今年|来年)/gu, "")
+          .replace(/[0-9０-９]+月[0-9０-９]+日/gu, "");
+        return cleanDestination(candidate);
+      }
+
+      function normalizePlaceName(value) {
+        return value
+          .toLocaleLowerCase("ja-JP")
+          .replace(/[\s　「」『』()（）・,，、]/gu, "");
+      }
+
+      function addPreferredParts(candidate, destination, output, seen) {
+        let cleaned = withoutDuration(candidate)
+          .replace(/(?:行きたいところ|行きたい場所|観光地|希望は|ここは|特に|絶対に?|必ず|ぜひ|できれば|あと|それから|そして|私|わたし|僕|ぼく|です|ます)/gu, "")
+          .trim();
+        if (destination) cleaned = cleaned.split(destination).join("");
+        cleaned = cleaned.replace(/(?:には|では|から|まで|に|へ|を|は|も|が|で|の)$/u, "");
+
+        const parts = cleaned.split(/(?:、|,|，|・|とか|と|や|および|それと|あと)/u);
+        for (let part of parts) {
+          part = part
+            .replace(/^(?:には|では|に|へ|を|は|も|が|で|の)+/u, "")
+            .replace(/(?:には|では|に|へ|を|は|も|が|で|の)+$/u, "")
+            .replace(/(?:です|ます|ください|お願いします)$/u, "")
+            .trim();
+          const key = normalizePlaceName(part);
+          if (part.length < 2 || key.length < 2 || seen.has(key)) continue;
+          if (["ここ", "そこ", "あそこ", "行きたい", "観光地"].includes(part)) continue;
+          seen.add(key);
+          output.push(part);
+        }
+      }
+
+      function preferredPlacesFromSpeech(text, destination) {
+        const output = [];
+        const seen = new Set();
+        const explicitPattern = /(?:行きたいところ|行きたい場所|訪れたい場所)(?:は|が|を)\s*([^。！？!?\n]+)/gu;
+        let explicitMatch;
+        while ((explicitMatch = explicitPattern.exec(text))) {
+          addPreferredParts(explicitMatch[1], destination, output, seen);
+        }
+
+        const intentPattern = /行ってみたい|行きたい|行きたくて|訪れたい|見たい|寄りたい|外せない|回りたい|まわりたい|巡りたい|観光したい/gu;
+        let intentMatch;
+        while ((intentMatch = intentPattern.exec(text))) {
+          const sentenceStart = Math.max(
+            text.lastIndexOf("。", intentMatch.index),
+            text.lastIndexOf("！", intentMatch.index),
+            text.lastIndexOf("？", intentMatch.index),
+            text.lastIndexOf("\n", intentMatch.index),
+          );
+          let candidate = text.slice(sentenceStart + 1, intentMatch.index);
+          candidate = candidate.replace(/.*(?:行ってみたい|行きたい|行きたくて|訪れたい|見たい|寄りたい|外せない|回りたい|まわりたい|巡りたい|観光したい)/u, "");
+          addPreferredParts(candidate, destination, output, seen);
+        }
+        return output;
+      }
+
+      function applyTranscriptConditions() {
+        const speech = transcriptInput.value.trim();
+        if (!speech) {
+          setStatus("先に音声を録音するか、文字起こしを入力してください。");
+          return;
+        }
+
+        const days = tripDaysFromSpeech(speech);
+        daysInput.value = String(Math.min(14, Math.max(1, Number.isFinite(days) ? days : 1)));
+        destinationInput.value = destinationFromSpeech(speech);
+        mustSeeInput.value = preferredPlacesFromSpeech(speech, destinationInput.value).join("\n");
+        setStatus("音声内容を条件欄に反映しました。行き先・日数・希望スポットを確認して、必要なら修正してください。");
+      }
+
+      function startRecording() {
+        if (busy || recording) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setStatus("このページではマイクを利用できません。HTTPSで開き、マイクを許可してください。");
+          return;
+        }
+        if (typeof MediaRecorder === "undefined") {
+          setStatus("このブラウザでは録音できません。");
+          return;
+        }
+
+        recording = true;
+        recordingError = null;
+        updateControls();
+        void (async () => {
+          try {
+            microphoneStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if (leavingPage) {
+              stopMicrophoneTracks();
+              recording = false;
+              updateControls();
+              return;
+            }
+            const chunks = [];
+            mediaRecorder = new MediaRecorder(microphoneStream);
+            mediaRecorder.addEventListener("dataavailable", (event) => {
+              if (event.data && event.data.size > 0) chunks.push(event.data);
+            });
+            mediaRecorder.addEventListener("error", (event) => {
+              console.error(event.error || event);
+              recordingError = event.error || new Error("録音中にエラーが発生しました。");
+              if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                try {
+                  mediaRecorder.stop();
+                } catch (error) {
+                  console.error(error);
+                }
+              }
+            });
+            mediaRecorder.addEventListener("stop", () => {
+              if (recordingTimer !== null) {
+                window.clearTimeout(recordingTimer);
+                recordingTimer = null;
+              }
+              const blob = new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" });
+              const error = recordingError;
+              recordingError = null;
+              mediaRecorder = null;
+              stopMicrophoneTracks();
+              recording = false;
+              updateControls();
+
+              if (leavingPage) return;
+              if (error) {
+                setStatus("録音に失敗しました: " + (error.message || error));
+                return;
+              }
+              void runExclusive(async () => {
+                if (!blob.size) throw new Error("録音データを取得できませんでした。");
+                await transcribeBlob(blob);
+              });
+            });
+
+            mediaRecorder.start();
+            updateControls();
+            setStatus("録音中です。旅行先、日数、行きたい場所を話してください。30秒で自動停止します。");
+            recordingTimer = window.setTimeout(stopRecording, MAX_AUDIO_SECONDS * 1000);
+          } catch (error) {
+            if (recordingTimer !== null) {
+              window.clearTimeout(recordingTimer);
+              recordingTimer = null;
+            }
+            stopMicrophoneTracks();
+            mediaRecorder = null;
+            recording = false;
+            recordingError = null;
+            updateControls();
+            setStatus("マイクを利用できませんでした: " + (error.message || error));
+          }
+        })();
+      }
+
+      function stopRecording() {
+        if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+        setStatus("録音を処理しています...");
+        try {
+          mediaRecorder.stop();
+        } catch (error) {
+          if (recordingTimer !== null) {
+            window.clearTimeout(recordingTimer);
+            recordingTimer = null;
+          }
+          stopMicrophoneTracks();
+          recording = false;
+          updateControls();
+          setStatus("録音を停止できませんでした: " + (error.message || error));
+        }
+      }
+
+      async function transcribeBlob(blob) {
+        setStatus("音声をモノラル16kHzへ変換しています...");
+        const audio = await blobToMono16k(blob);
+        const recognizer = await ensureWhisper();
+        setStatus("音声を文字起こししています...");
+        const result = await recognizer(audio, { task: "transcribe" });
+        const text = typeof result === "string"
+          ? result
+          : Array.isArray(result)
+            ? (result[0] && result[0].text) || ""
+            : result && result.text || "";
+        if (!text.trim()) {
+          throw new Error("音声を文字起こしできませんでした。もう一度録音してください。");
+        }
+        transcriptInput.value = text.trim();
+        applyTranscriptConditions();
+      }
+
+      function endpointUrl(value, label) {
+        let url;
+        try {
+          url = new URL(value.trim());
+        } catch {
+          throw new Error(label + "のURLを確認してください。");
+        }
+        if (url.protocol !== "https:") {
+          throw new Error(label + "にはHTTPSのURLを指定してください。");
+        }
+        return url.toString();
+      }
+
+      function currentEndpoints() {
+        return {
+          geocoder: endpointUrl(geocoderEndpointInput.value || DEFAULT_GEOCODER, "地名検索API"),
+          overpass: endpointUrl(overpassEndpointInput.value || DEFAULT_OVERPASS, "観光地検索API"),
+        };
+      }
+
+      function loadSavedEndpoints() {
+        try {
+          geocoderEndpointInput.value = localStorage.getItem("travel-planner-geocoder") || DEFAULT_GEOCODER;
+          overpassEndpointInput.value = localStorage.getItem("travel-planner-overpass") || DEFAULT_OVERPASS;
+        } catch (error) {
+          console.warn("API設定を読み込めませんでした。", error);
+        }
+      }
+
+      function saveApiSettings() {
+        try {
+          const endpoints = currentEndpoints();
+          try {
+            localStorage.setItem("travel-planner-geocoder", endpoints.geocoder);
+            localStorage.setItem("travel-planner-overpass", endpoints.overpass);
+          } catch (error) {
+            console.warn("API設定を保存できませんでした。", error);
+          }
+          setStatus("API設定をこのブラウザに保存しました。");
+        } catch (error) {
+          setStatus("API設定を保存できませんでした: " + (error.message || error));
+        }
+      }
+
+      async function fetchWithTimeout(url, options, timeoutMs) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(url, { ...options, signal: controller.signal });
+        } catch (error) {
+          if (error.name === "AbortError") {
+            throw new Error("地図データAPIの応答がタイムアウトしました。時間をおいて再度お試しください。");
+          }
+          throw new Error("地図データAPIに接続できませんでした。ネットワークやAPI設定を確認してください。");
+        } finally {
+          window.clearTimeout(timer);
+        }
+      }
+
+      async function geocodeDestination(destination, endpoint) {
+        const cacheKey = endpoint + "|" + destination.trim().toLocaleLowerCase("ja-JP");
+        if (geocoderCache.has(cacheKey)) return geocoderCache.get(cacheKey);
+
+        const waitMs = Math.max(0, 1000 - (Date.now() - lastGeocoderRequestAt));
+        if (waitMs > 0) await delay(waitMs);
+
+        const url = new URL(endpoint);
+        url.searchParams.set("format", "jsonv2");
+        url.searchParams.set("q", destination);
+        url.searchParams.set("limit", "1");
+        url.searchParams.set("accept-language", "ja");
+
+        lastGeocoderRequestAt = Date.now();
+        const response = await fetchWithTimeout(url, {}, 15000);
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw new Error("地名検索APIの利用制限に達しました。しばらくしてから再度お試しください。");
+          }
+          throw new Error("行き先を検索できませんでした（HTTP " + response.status + "）。");
+        }
+        const matches = await response.json();
+        if (!Array.isArray(matches) || matches.length === 0) {
+          throw new Error("行き先が見つかりませんでした。市区町村名などに直して再度お試しください。");
+        }
+
+        const location = {
+          displayName: matches[0].display_name || destination,
+          lat: Number(matches[0].lat),
+          lon: Number(matches[0].lon),
+        };
+        if (!Number.isFinite(location.lat) || !Number.isFinite(location.lon)) {
+          throw new Error("行き先の位置情報を読み取れませんでした。");
+        }
+        geocoderCache.set(cacheKey, location);
+        return location;
+      }
+
+      function escapeOverpassRegex(value) {
+        const specialCharacters = "\\^$.*+?()[]{}|";
+        let escaped = "";
+        for (const character of value) {
+          if (specialCharacters.includes(character)) escaped += "\\";
+          escaped += character;
+        }
+        return escaped;
+      }
+
+      function quoteOverpassString(value) {
+        return '"' + value.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"';
+      }
+
+      function buildOverpassQuery(location, radius, mustSeeNames) {
+        const around = "(around:" + radius + "," + location.lat.toFixed(6) + "," + location.lon.toFixed(6) + ")";
+        let query = "[out:json][timeout:25];\n";
+
+        if (mustSeeNames.length > 0) {
+          const namesRegex = mustSeeNames
+            .slice(0, 12)
+            .map(escapeOverpassRegex)
+            .join("|");
+          query += ["(", "  nwr" + around + '["name"~' + quoteOverpassString(namesRegex) + ",i];", ")", "out center;", ""].join("\n");
+        }
+
+        query += [
+          "(",
+          '  nwr' + around + '["tourism"~"^(attraction|museum|viewpoint|zoo|aquarium|theme_park|gallery|artwork)$"]["name"];',
+          '  nwr' + around + '["historic"~"^(castle|monument|memorial|archaeological_site|ruins)$"]["name"];',
+          '  nwr' + around + '["leisure"~"^(park|garden)$"]["name"];',
+          ")",
+          "out center 200;",
+        ].join("\n");
+        return query;
+      }
+
+      async function fetchAttractions(location, radius, mustSeeNames, endpoint) {
+        const cacheKey = JSON.stringify([
+          endpoint,
+          location.lat.toFixed(4),
+          location.lon.toFixed(4),
+          radius,
+          mustSeeNames.slice(0, 12).map(normalizePlaceName).sort(),
+        ]);
+        if (attractionCache.has(cacheKey)) return attractionCache.get(cacheKey);
+
+        const query = buildOverpassQuery(location, radius, mustSeeNames);
+        const options = {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+          body: "data=" + encodeURIComponent(query),
+        };
+        let response = await fetchWithTimeout(endpoint, options, 35000);
+        if (response.status === 429 || response.status === 406) {
+          setStatus("観光地検索APIが混み合っています。30秒待ってから再試行します...");
+          await delay(30000);
+          response = await fetchWithTimeout(endpoint, options, 35000);
+        }
+        if (!response.ok) {
+          throw new Error("観光地を検索できませんでした（HTTP " + response.status + "）。");
+        }
+
+        const data = await response.json();
+        if (!data || !Array.isArray(data.elements)) {
+          throw new Error("観光地検索APIの応答形式が想定と異なります。");
+        }
+        attractionCache.set(cacheKey, data.elements);
+        return data.elements;
+      }
+
+      function coordinatesOf(element) {
+        if (Number.isFinite(element.lat) && Number.isFinite(element.lon)) {
+          return { lat: element.lat, lon: element.lon };
+        }
+        if (element.center && Number.isFinite(element.center.lat) && Number.isFinite(element.center.lon)) {
+          return { lat: element.center.lat, lon: element.center.lon };
+        }
+        return null;
+      }
+
+      function categoryOf(tags) {
+        const value = tags.tourism || tags.historic || tags.leisure || "attraction";
+        const categories = {
+          attraction: "観光スポット",
+          museum: "博物館・美術館",
+          viewpoint: "展望地",
+          zoo: "動物園",
+          aquarium: "水族館",
+          theme_park: "テーマパーク",
+          gallery: "ギャラリー",
+          artwork: "アート",
+          castle: "城",
+          monument: "記念碑",
+          memorial: "記念施設",
+          archaeological_site: "史跡",
+          ruins: "遺跡",
+          park: "公園",
+          garden: "庭園",
+        };
+        return categories[value] || "観光スポット";
+      }
+
+      function parseAttractions(elements) {
+        const unique = new Map();
+        for (const element of elements) {
+          const tags = element.tags || {};
+          const name = (tags.name || "").trim();
+          const point = coordinatesOf(element);
+          if (!name || !point) continue;
+
+          const key = normalizePlaceName(name) + "|" + point.lat.toFixed(3) + "|" + point.lon.toFixed(3);
+          if (unique.has(key)) continue;
+          unique.set(key, {
+            name,
+            lat: point.lat,
+            lon: point.lon,
+            category: categoryOf(tags),
+            tags,
+            key,
+          });
+        }
+        return Array.from(unique.values());
+      }
+
+      function distanceKm(a, b) {
+        const radians = Math.PI / 180;
+        const lat1 = a.lat * radians;
+        const lat2 = b.lat * radians;
+        const deltaLat = (b.lat - a.lat) * radians;
+        const deltaLon = (b.lon - a.lon) * radians;
+        const sinLat = Math.sin(deltaLat / 2);
+        const sinLon = Math.sin(deltaLon / 2);
+        const value = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+        return 6371 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+      }
+
+      function matchMustSee(names, attractions) {
+        const matched = new Map();
+        const unmatched = [];
+        for (const requestedName of names) {
+          const requested = normalizePlaceName(requestedName);
+          if (!requested) continue;
+          const found = attractions
+            .filter((place) => {
+              const name = normalizePlaceName(place.name);
+              return name === requested ||
+                (requested.length >= 2 && name.includes(requested)) ||
+                (name.length >= 3 && requested.includes(name));
+            })
+            .sort((a, b) => {
+              const aExact = normalizePlaceName(a.name) === requested ? 0 : 1;
+              const bExact = normalizePlaceName(b.name) === requested ? 0 : 1;
+              return aExact - bExact;
+            })[0];
+
+          if (!found) {
+            unmatched.push(requestedName);
+            continue;
+          }
+          if (!matched.has(found.key)) {
+            matched.set(found.key, { ...found, mustSee: true, requestedNames: [] });
+          }
+          matched.get(found.key).requestedNames.push(requestedName);
+        }
+        return { matched: Array.from(matched.values()), unmatched };
+      }
+
+      function nearestOrder(places, start) {
+        const remaining = places.slice();
+        const ordered = [];
+        let current = start;
+        while (remaining.length > 0) {
+          let bestIndex = 0;
+          let bestDistance = distanceKm(current, remaining[0]);
+          for (let index = 1; index < remaining.length; index++) {
+            const distance = distanceKm(current, remaining[index]);
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              bestIndex = index;
+            }
+          }
+          const next = remaining.splice(bestIndex, 1)[0];
+          ordered.push(next);
+          current = next;
+        }
+        return ordered;
+      }
+
+      function buildItinerary(location, attractions, requestedNames, dayCount) {
+        const mustSee = matchMustSee(requestedNames, attractions);
+        const mustOrder = nearestOrder(mustSee.matched, location);
+        const days = Array.from({ length: dayCount }, () => []);
+        mustOrder.forEach((place, index) => {
+          const dayIndex = Math.min(dayCount - 1, Math.floor(index * dayCount / mustOrder.length));
+          days[dayIndex].push(place);
+        });
+
+        const used = new Set(mustSee.matched.map((place) => place.key));
+        const optional = attractions.filter((place) => !used.has(place.key));
+        const optionalBudget = Math.max(0, dayCount * 4 - mustSee.matched.length);
+        const plannedCount = mustSee.matched.length + Math.min(optional.length, optionalBudget);
+        const targetPerDay = Math.min(4, Math.ceil(plannedCount / dayCount));
+        for (let round = 0; round < targetPerDay; round++) {
+          for (const day of days) {
+            if (day.length >= targetPerDay || day.length >= 4 || optional.length === 0) continue;
+            const current = day.length > 0 ? day[day.length - 1] : location;
+            let bestIndex = 0;
+            let bestDistance = distanceKm(current, optional[0]);
+            for (let index = 1; index < optional.length; index++) {
+              const distance = distanceKm(current, optional[index]);
+              if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = index;
+              }
+            }
+            day.push(optional.splice(bestIndex, 1)[0]);
+          }
+        }
+        return { days, unmatched: mustSee.unmatched, matchedCount: mustSee.matched.length };
+      }
+
+      function timeForIndex(index) {
+        const standard = ["09:00", "11:00", "14:00", "16:00"];
+        if (standard[index]) return standard[index];
+        const hour = 17 + index - standard.length;
+        return String(hour).padStart(2, "0") + ":00";
+      }
+
+      function mapLinkFor(place) {
+        const url = new URL("https://www.openstreetmap.org/");
+        url.hash = "map=16/" + place.lat + "/" + place.lon;
+        return url.href;
+      }
+
+      function renderItinerary(destination, location, radius, itinerary, dayCount) {
+        const fragment = document.createDocumentFragment();
+        const heading = document.createElement("h2");
+        heading.textContent = destination + "の旅行プラン（" + dayCount + "日間）";
+        fragment.append(heading);
+
+        const locationLine = document.createElement("p");
+        locationLine.textContent = "検索地点: " + location.displayName + " / 周辺約" + (radius / 1000) + "km";
+        fragment.append(locationLine);
+
+        if (itinerary.matchedCount > dayCount * 4) {
+          const denseNote = document.createElement("p");
+          denseNote.textContent = "希望スポットが多いため、一部の日程は4か所を超えています。時間に余裕があるか確認してください。";
+          fragment.append(denseNote);
+        }
+
+        itinerary.days.forEach((places, dayIndex) => {
+          const section = document.createElement("section");
+          const dayHeading = document.createElement("h3");
+          dayHeading.textContent = (dayIndex + 1) + "日目";
+          section.append(dayHeading);
+
+          if (places.length === 0) {
+            const empty = document.createElement("p");
+            empty.textContent = "この日の候補は見つかりませんでした。検索範囲や旅行日数を調整してください。";
+            section.append(empty);
+          } else {
+            const list = document.createElement("ol");
+            places.forEach((place, placeIndex) => {
+              if (placeIndex === 2) {
+                const breakItem = document.createElement("li");
+                breakItem.textContent = "12:30 昼食・休憩";
+                list.append(breakItem);
+              }
+
+              const item = document.createElement("li");
+              const time = document.createElement("strong");
+              time.textContent = timeForIndex(placeIndex) + " ";
+              item.append(time);
+
+              const link = document.createElement("a");
+              link.href = mapLinkFor(place);
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = place.name;
+              item.append(link);
+
+              const details = document.createElement("span");
+              details.textContent = " — " + place.category + (place.mustSee ? "（希望スポット）" : "");
+              item.append(details);
+              list.append(item);
+            });
+            section.append(list);
+          }
+          fragment.append(section);
+        });
+
+        if (itinerary.unmatched.length > 0) {
+          const unmatchedHeading = document.createElement("h3");
+          unmatchedHeading.textContent = "地図データで見つからなかった希望スポット";
+          fragment.append(unmatchedHeading);
+          const unmatchedList = document.createElement("ul");
+          for (const name of itinerary.unmatched) {
+            const item = document.createElement("li");
+            item.textContent = name + " — 地図データに登録がないか、検索範囲外です。行き先を絞るか、表記を確認してください。";
+            unmatchedList.append(item);
+          }
+          fragment.append(unmatchedList);
+        }
+
+        planOutput.replaceChildren(fragment);
+      }
+
+      async function makeTravelPlan() {
+        const destination = destinationInput.value.trim();
+        const dayCount = daysInput.valueAsNumber;
+        if (!destination) throw new Error("行き先を入力するか、音声内容を反映してください。");
+        if (!Number.isInteger(dayCount) || dayCount < 1 || dayCount > 14) {
+          throw new Error("旅行日数は1〜14日の整数で指定してください。");
+        }
+
+        const endpoints = currentEndpoints();
+        const requestedNames = mustSeeInput.value
+          .split(/[\n、,，;；]+/u)
+          .map((name) => name.trim())
+          .filter(Boolean)
+          .slice(0, 12);
+        const radius = Math.min(30000, 10000 + (dayCount - 1) * 4000);
+        planOutput.replaceChildren();
+
+        setStatus("行き先を検索しています...");
+        const location = await geocodeDestination(destination, endpoints.geocoder);
+        setStatus("OpenStreetMapから周辺の観光地を検索しています...");
+        const elements = await fetchAttractions(location, radius, requestedNames, endpoints.overpass);
+        const attractions = parseAttractions(elements);
+        if (attractions.length === 0) {
+          throw new Error("周辺の観光地が地図データに見つかりませんでした。別の行き先やAPIをお試しください。");
+        }
+
+        const itinerary = buildItinerary(location, attractions, requestedNames, dayCount);
+        renderItinerary(destination, location, radius, itinerary, dayCount);
+        const unmatchedText = itinerary.unmatched.length > 0
+          ? " 希望スポット" + itinerary.unmatched.length + "か所は地図データで確認できませんでした。"
+          : "";
+        setStatus(attractions.length + "か所の候補から" + dayCount + "日分の予定を作りました。" + unmatchedText);
+      }
+
+      recordStartButton.addEventListener("click", startRecording);
+      recordStopButton.addEventListener("click", stopRecording);
+      applyTranscriptButton.addEventListener("click", applyTranscriptConditions);
+      makePlanButton.addEventListener("click", () => runExclusive(makeTravelPlan));
+      saveApiSettingsButton.addEventListener("click", saveApiSettings);
+
+      window.addEventListener("pagehide", () => {
+        leavingPage = true;
+        if (recordingTimer !== null) window.clearTimeout(recordingTimer);
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          try {
+            mediaRecorder.stop();
+          } catch (error) {
+            console.error(error);
+          }
+        }
+        stopMicrophoneTracks();
+        try {
+          const result = whisperPipeline && whisperPipeline.dispose && whisperPipeline.dispose();
+          if (result && result.catch) result.catch((error) => console.error("Whisperの解放エラー:", error));
+        } catch (error) {
+          console.error("Whisperの解放エラー:", error);
+        }
+      });
+
+      loadSavedEndpoints();
+      updateControls();
+    </script>
+  </body>
+</html>
