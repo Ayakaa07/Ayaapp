@@ -3,69 +3,296 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>音声で旅行スケジュール作成</title>
+    <meta name="theme-color" content="#f8f3ff" />
+    <title>たびのしおり — 旅行プラン</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+        color: #493e5b;
+        background: #faf8ff;
+        font-synthesis: none;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(ellipse at 8% 5%, rgba(255, 220, 204, 0.52), transparent 29rem),
+          radial-gradient(ellipse at 92% 16%, rgba(224, 216, 255, 0.68), transparent 31rem),
+          #faf8ff;
+      }
+
+      button, input, textarea, select { font: inherit; }
+
+      .page-shell {
+        width: min(1040px, calc(100% - 36px));
+        margin: 0 auto;
+        padding: 22px 0 48px;
+      }
+
+      .site-header, .brand, .header-note, .panel-heading, .voice-heading,
+      .voice-actions, .results-heading, .search-action-row {
+        display: flex;
+        align-items: center;
+      }
+
+      .site-header { justify-content: space-between; gap: 16px; }
+      .brand { gap: 10px; color: #554469; text-decoration: none; font-size: 1.05rem; font-weight: 800; }
+      .brand-mark {
+        display: grid;
+        width: 40px;
+        height: 40px;
+        place-items: center;
+        border-radius: 14px;
+        background: #ffe2d6;
+        font-size: 1.2rem;
+      }
+      .header-note { gap: 7px; color: #827891; font-size: 0.84rem; }
+
+      .hero { padding: 54px 12px 34px; text-align: center; }
+      .eyebrow, .section-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        border-radius: 999px;
+        background: #f0eaff;
+        color: #715e9a;
+        padding: 7px 13px;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .hero h1 { margin: 17px 0 12px; font-size: clamp(2rem, 5vw, 3.35rem); line-height: 1.35; letter-spacing: 0.025em; }
+      .hero h1 span { color: #9178c7; }
+      .hero p { margin: 0; color: #776f83; line-height: 1.8; }
+
+      .search-panel, .voice-panel, #plan section {
+        border: 1px solid #eee8f3;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 12px 34px rgba(88, 67, 110, 0.08);
+      }
+      .search-panel { padding: clamp(20px, 4vw, 34px); }
+      .panel-heading { justify-content: space-between; gap: 14px; margin-bottom: 24px; }
+      .panel-heading h2, .voice-heading h2 { margin: 0; font-size: 1.25rem; }
+      .panel-hint { color: #8a8294; font-size: 0.82rem; }
+      .search-fields { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 16px; }
+      .travel-settings { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-top: 17px; }
+      .field { min-width: 0; }
+      .field label, .transcript-field label { display: block; margin-bottom: 8px; color: #62566f; font-size: 0.88rem; font-weight: 700; }
+      .input-wrap { position: relative; }
+      .field-icon { position: absolute; top: 50%; left: 14px; transform: translateY(-50%); pointer-events: none; }
+      .field input, .field textarea, .field select, .transcript-field textarea {
+        width: 100%;
+        border: 1px solid #e7e0ec;
+        border-radius: 14px;
+        outline: none;
+        background: #fdfcff;
+        color: #493e5b;
+        transition: border-color 120ms ease, box-shadow 120ms ease;
+      }
+      .field input, .field select { min-height: 52px; padding: 0 14px; }
+      .input-wrap input:not([type="number"]) { padding-left: 42px; }
+      .field input[type="number"] { padding-left: 14px; }
+      .field textarea { min-height: 86px; padding: 13px 14px; resize: vertical; line-height: 1.6; }
+      .transcript-field textarea { min-height: 108px; padding: 13px 14px; resize: vertical; line-height: 1.6; }
+      .field input:focus, .field textarea:focus, .field select:focus, .transcript-field textarea:focus { border-color: #ae96dc; box-shadow: 0 0 0 3px rgba(174, 150, 220, 0.17); }
+      .field-wide { margin-top: 17px; }
+      .field small { display: block; margin-top: 7px; color: #8c8496; line-height: 1.6; }
+      .destination-options { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+      .destination-chip { border: 1px solid #eee7f4; border-radius: 999px; background: #fff; color: #786a8c; padding: 5px 10px; font-size: 0.78rem; cursor: pointer; }
+      .destination-chip:hover { border-color: #cdbce5; background: #faf7ff; }
+
+      .search-action-row { justify-content: center; margin-top: 22px; }
+      .primary-button, .secondary-button, .quiet-button {
+        min-height: 46px;
+        border: 0;
+        border-radius: 14px;
+        padding: 0 20px;
+        font-weight: 750;
+        cursor: pointer;
+      }
+      .primary-button { min-width: min(100%, 280px); background: #8a71bd; color: white; box-shadow: 0 6px 14px rgba(117, 91, 165, 0.2); }
+      .primary-button:hover:not(:disabled) { background: #7960ad; }
+      .secondary-button { background: #ffeadf; color: #855a4b; }
+      .quiet-button { border: 1px solid #e9e2ef; background: white; color: #665b73; }
+      button:disabled { cursor: default; opacity: 0.52; }
+      button:focus-visible { outline: 3px solid #cdb9ef; outline-offset: 2px; }
+
+      .voice-panel { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); gap: 24px; margin-top: 22px; padding: 24px; }
+      .voice-heading { gap: 10px; margin: 9px 0 10px; }
+      .voice-copy > p { color: #7e7589; font-size: 0.9rem; line-height: 1.75; }
+      .voice-actions { flex-wrap: wrap; gap: 9px; margin-top: 17px; }
+      .status-message { min-height: 42px; margin: 15px 0 0; color: #776d85; font-size: 0.84rem; line-height: 1.6; }
+      .transcript-field { display: flex; flex-direction: column; align-items: stretch; }
+      .transcript-field .quiet-button { align-self: flex-start; margin-top: 10px; }
+
+      .results-area { margin-top: 30px; }
+      .results-heading { justify-content: space-between; margin: 0 2px 13px; }
+      .results-heading h2 { margin: 0; font-size: 1.25rem; }
+      .results-heading span { color: #8b8295; font-size: 0.83rem; }
+      #plan:empty { display: none; }
+      #plan > h2 { margin: 0 0 15px; color: #514362; font-size: 1.45rem; }
+      #plan > p { color: #81788c; }
+      #plan section { margin: 13px 0; padding: 18px 22px; }
+      #plan section h3 { margin: 0 0 12px; color: #705b95; }
+      #plan ol { margin: 0; padding-left: 1.5rem; }
+      #plan li { padding: 8px 4px; line-height: 1.65; }
+      #plan li::marker { color: #a287d3; font-weight: 700; }
+      #plan li strong { display: inline-block; min-width: 52px; color: #8a71bd; }
+      #plan li.travel-entry { padding-left: 8px; color: #84798f; font-size: 0.86rem; }
+      #plan li.travel-entry::marker { content: "↗  "; color: #a287d3; }
+      #plan li.travel-entry a, #plan .ticket-info a, #plan .place-detail a { color: #7960ad; }
+      #plan .route-detail, #plan .ticket-info { display: block; margin-top: 3px; }
+      #plan .ticket-total { padding: 11px 14px; border-radius: 12px; background: #f4effb; color: #5f4b7e; font-weight: 700; }
+      #plan .ticket-info { color: #887e91; font-size: 0.84rem; }
+      #plan .ticket-info input { width: 112px; min-height: 36px; margin: 0 4px; padding: 4px 8px; border: 1px solid #e7e0ec; border-radius: 9px; color: #493e5b; }
+      #plan li .place-name { color: #55476a; font-size: 1rem; font-weight: 700; }
+      #plan li .place-category { color: #887e91; font-size: 0.88rem; }
+      #plan li.has-photo {
+        position: relative;
+        min-height: 122px;
+        margin: 9px 0;
+        padding: 10px 10px 10px 160px;
+        border-radius: 16px;
+        background: #fcfaff;
+      }
+      .place-photo { position: absolute; top: 10px; left: 10px; display: block; width: 136px; height: 102px; border-radius: 11px; object-fit: contain; background: #f0eaff; }
+      .place-info { min-width: 0; }
+      .place-info .place-credit { display: block; margin-top: 4px; color: #958a9e; font-size: 0.7rem; line-height: 1.4; }
+      .place-info .place-credit a { color: inherit; }
+      #plan section p { color: #887e91; }
+      #plan > h3 { margin-top: 22px; }
+      #plan > ul { line-height: 1.9; }
+      .site-footer { margin-top: 28px; color: #8b8295; font-size: 0.78rem; line-height: 1.7; text-align: center; }
+
+      @media (max-width: 680px) {
+        .page-shell { width: min(100% - 24px, 540px); padding-top: 14px; }
+        .hero { padding: 38px 6px 25px; }
+        .search-fields, .travel-settings, .voice-panel { grid-template-columns: 1fr; }
+        .voice-panel { gap: 12px; padding: 19px; }
+        .panel-heading { align-items: flex-start; flex-direction: column; gap: 7px; }
+        .header-note { font-size: 0.72rem; }
+        #plan li.has-photo { min-height: 94px; padding: 8px 8px 8px 120px; }
+        .place-photo { top: 8px; left: 8px; width: 104px; height: 78px; }
+      }
+    </style>
   </head>
   <body>
-    <h1>音声で旅行スケジュール作成</h1>
-    <p>「京都に3日間行きたい。清水寺と伏見稲荷には行きたい」のように話してください。</p>
-    <p>
-      音声はブラウザ内の
-      <a href="https://huggingface.co/onnx-community/whisper-tiny">Whisper tiny</a>
-      で文字起こしします。録音は最大30秒です。初回はモデル取得のためインターネット接続が必要です。
-    </p>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="#top" aria-label="たびのしおり トップ">
+          <span class="brand-mark" aria-hidden="true">✈️</span>
+          <span>たびのしおり</span>
+        </a>
+        <span class="header-note"><span aria-hidden="true">🌷</span> 旅の予定を、たのしく準備</span>
+      </header>
 
-    <p>
-      <button id="record-start" type="button">録音開始</button>
-      <button id="record-stop" type="button" disabled>録音停止</button>
-    </p>
-    <p id="status" role="status" aria-live="polite">WebGPU対応ブラウザとマイクが必要です。</p>
+      <main id="top">
+        <section class="hero">
+          <span class="eyebrow"><span aria-hidden="true">✦</span> 次のお休み、どこへ行こう？</span>
+          <h1>行きたい場所から<br /><span>旅のプランを作ろう</span></h1>
+          <p>行き先と日数を入れるだけ。お気に入りの場所を中心に、旅程をまとめます。</p>
+        </section>
 
-    <p>
-      <label for="transcript">音声の文字起こし（確認・編集できます）</label><br />
-      <textarea id="transcript" rows="4" cols="60" placeholder="録音すると、ここに文字起こしが表示されます"></textarea>
-    </p>
-    <p><button id="apply-transcript" type="button">音声内容から条件を反映</button></p>
+        <section class="search-panel" aria-labelledby="search-title">
+          <div class="panel-heading">
+            <h2 id="search-title">🔎 旅先を検索</h2>
+            <span class="panel-hint">まずは行き先と日数を入力してください</span>
+          </div>
+          <div class="search-fields">
+            <div class="field">
+              <label for="destination">行き先</label>
+              <div class="input-wrap">
+                <span class="field-icon" aria-hidden="true">📍</span>
+                <input id="destination" type="text" autocomplete="off" placeholder="例: 京都" />
+              </div>
+              <div class="destination-options" aria-label="内蔵ガイドの行き先">
+                <button class="destination-chip" type="button" data-destination="京都">京都</button>
+                <button class="destination-chip" type="button" data-destination="東京">東京</button>
+                <button class="destination-chip" type="button" data-destination="大阪">大阪</button>
+                <button class="destination-chip" type="button" data-destination="奈良">奈良</button>
+                <button class="destination-chip" type="button" data-destination="広島">広島</button>
+                <button class="destination-chip" type="button" data-destination="福岡">福岡</button>
+                <button class="destination-chip" type="button" data-destination="札幌">札幌</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="days">旅行日数</label>
+              <div class="input-wrap">
+                <input id="days" type="number" min="1" max="14" step="1" value="1" />
+              </div>
+            </div>
+          </div>
+          <div class="field field-wide">
+            <label for="must-see">行きたい場所 <span class="panel-hint">（1行に1か所）</span></label>
+            <textarea id="must-see" rows="3" placeholder="例: 清水寺&#10;伏見稲荷大社"></textarea>
+            <small>音声から読み取った内容もここで確認・編集できます。</small>
+          </div>
+          <div class="field field-wide">
+            <label for="origin">出発地（最寄り駅）</label>
+            <input id="origin" type="text" autocomplete="off" placeholder="最寄り駅名を入力（例: 京都駅）" />
+          </div>
+          <div class="travel-settings">
+            <div class="field">
+              <label for="departure-time">最寄り駅を出る時刻</label>
+              <input id="departure-time" type="time" value="08:00" />
+            </div>
+            <div class="field">
+              <label for="travel-mode">現地での移動手段</label>
+              <select id="travel-mode">
+                <option value="transit">電車・バス中心</option>
+                <option value="car">車</option>
+                <option value="walk">徒歩</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="travel-date">旅行日（任意）</label>
+              <input id="travel-date" type="date" />
+            </div>
+          </div>
+          <small>最寄り駅から最初の行き先・最後の行き先から駅までは片道60分を仮の目安にします。現地の移動時間は距離からの概算です。「電車・バス中心」を選び、旅行日を入れると、各区間のリンク先に列車・新幹線、乗換、運賃が表示されます。駅名や行き先はリンクを開いたときだけYahoo!路線情報へ送られます。</small>
+          <div class="search-action-row">
+            <button class="primary-button" id="make-plan" type="button">この条件でプランを作る　→</button>
+          </div>
+        </section>
 
-    <p>
-      <label for="destination">行き先</label>
-      <input id="destination" type="text" autocomplete="off" placeholder="例: 京都" />
-    </p>
-    <p>
-      <label for="days">旅行日数</label>
-      <input id="days" type="number" min="1" max="14" step="1" value="1" />
-    </p>
-    <p>
-      <label for="must-see">必ず行きたい場所（1行に1か所。音声から抽出した内容を編集できます）</label><br />
-      <textarea id="must-see" rows="3" cols="60" placeholder="例: 清水寺&#10;伏見稲荷大社"></textarea>
-    </p>
-    <p><button id="make-plan" type="button">スケジュールを作る</button></p>
+        <section class="voice-panel" aria-labelledby="voice-title">
+          <div class="voice-copy">
+            <span class="section-tag">🎙️ 音声で入力</span>
+            <div class="voice-heading"><h2 id="voice-title">話して旅の希望を伝える</h2></div>
+            <p>「京都に3日間。清水寺と伏見稲荷に行きたい」のように話してください。Whisper tinyで文字にします。録音は最大30秒です。</p>
+            <div class="voice-actions">
+              <button class="secondary-button" id="record-start" type="button">録音開始</button>
+              <button class="quiet-button" id="record-stop" type="button" disabled>録音停止</button>
+              <button class="quiet-button" id="record-retake" type="button">録音しなおす</button>
+            </div>
+            <p class="status-message" id="status" role="status" aria-live="polite">録音にはマイク、音声認識にはWebGPU対応ブラウザが必要です。</p>
+          </div>
+          <div class="transcript-field">
+            <label for="transcript">文字起こし<br /><span class="panel-hint">内容を確認してから条件へ反映できます</span></label>
+            <textarea id="transcript" rows="4" placeholder="録音した内容がここに表示されます"></textarea>
+            <button class="quiet-button" id="apply-transcript" type="button">条件に反映する</button>
+          </div>
+        </section>
 
-    <div id="plan" aria-live="polite"></div>
-    <p>順番と時刻は距離をもとにした目安です。営業時間、交通機関、実際の移動時間は確認してください。</p>
-    <p>
-      観光地データ: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>（ODbL）。
-      音声は端末内で処理し、検索時には行き先と希望スポット名をOpenStreetMap APIへ送信します。
-    </p>
-    <p>
-      地名検索はスケジュール作成時だけ行います。Nominatim公開APIは利用量に制限があります。
-      <a href="https://operations.osmfoundation.org/policies/nominatim/">利用ポリシー</a>を確認してください。
-      利用が増えた場合は下の設定から別の互換APIへ切り替えてください。
-    </p>
+        <section class="results-area" aria-labelledby="results-title">
+          <div class="results-heading">
+            <h2 id="results-title">🧳 旅のプラン</h2>
+            <span>候補はアプリ内のデータから作成</span>
+          </div>
+          <div id="plan" aria-live="polite"></div>
+        </section>
+      </main>
 
-    <details>
-      <summary>地図データAPI設定</summary>
-      <p>互換サービスへ切り替える場合にエンドポイントを変更できます。設定はこのブラウザに保存します。</p>
-      <p><a href="https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances">Overpass APIの公開インスタンスと利用条件</a></p>
-      <p>
-        <label for="geocoder-endpoint">地名検索API（Nominatim互換）</label><br />
-        <input id="geocoder-endpoint" type="url" size="70" value="https://nominatim.openstreetmap.org/search" />
-      </p>
-      <p>
-        <label for="overpass-endpoint">観光地検索API（Overpass互換）</label><br />
-        <input id="overpass-endpoint" type="url" size="70" value="https://overpass-api.de/api/interpreter" />
-      </p>
-      <p><button id="save-api-settings" type="button">API設定を保存</button></p>
-    </details>
+      <footer class="site-footer">
+        <p>観光地の候補と順番はアプリ内のデータから作ります。観光地検索APIや地図APIへ自動接続しません。列車の検索リンクを開くと、その区間の出発地・到着地・日時をYahoo!路線情報へ送信します。</p>
+        <p>内蔵候補: 京都、東京、大阪、奈良、広島、福岡、札幌。音声は端末内で処理します。音声認識モデルの初回取得にはインターネット接続が必要です。</p>
+        <p>写真は <a href="assets/places/credits.md">写真クレジット</a> に出典を記載しています。滞在・移動時間は目安です。入場料や営業時間、列車の運行は公式情報で確認してください。</p>
+      </footer>
+    </div>
 
     <script type="module">
       import { env, pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
@@ -75,22 +302,23 @@
       const WHISPER_MODEL_ID = "onnx-community/whisper-tiny";
       const SAMPLE_RATE = 16000;
       const MAX_AUDIO_SECONDS = 30;
-      const DEFAULT_GEOCODER = "https://nominatim.openstreetmap.org/search";
-      const DEFAULT_OVERPASS = "https://overpass-api.de/api/interpreter";
+      const ORIGIN_TRAVEL_ESTIMATE_MINUTES = 60;
 
       const recordStartButton = document.querySelector("#record-start");
       const recordStopButton = document.querySelector("#record-stop");
+      const recordRetakeButton = document.querySelector("#record-retake");
       const transcriptInput = document.querySelector("#transcript");
       const applyTranscriptButton = document.querySelector("#apply-transcript");
       const destinationInput = document.querySelector("#destination");
       const daysInput = document.querySelector("#days");
       const mustSeeInput = document.querySelector("#must-see");
+      const originInput = document.querySelector("#origin");
+      const departureTimeInput = document.querySelector("#departure-time");
+      const travelModeInput = document.querySelector("#travel-mode");
+      const travelDateInput = document.querySelector("#travel-date");
       const makePlanButton = document.querySelector("#make-plan");
       const status = document.querySelector("#status");
       const planOutput = document.querySelector("#plan");
-      const geocoderEndpointInput = document.querySelector("#geocoder-endpoint");
-      const overpassEndpointInput = document.querySelector("#overpass-endpoint");
-      const saveApiSettingsButton = document.querySelector("#save-api-settings");
 
       let busy = false;
       let recording = false;
@@ -101,10 +329,6 @@
       let recordingTimer = null;
       let whisperPipeline = null;
       let whisperPromise = null;
-      let lastGeocoderRequestAt = 0;
-
-      const geocoderCache = new Map();
-      const attractionCache = new Map();
 
       const lockedControls = [
         transcriptInput,
@@ -112,10 +336,11 @@
         destinationInput,
         daysInput,
         mustSeeInput,
+        originInput,
+        departureTimeInput,
+        travelModeInput,
+        travelDateInput,
         makePlanButton,
-        geocoderEndpointInput,
-        overpassEndpointInput,
-        saveApiSettingsButton,
       ];
 
       function setStatus(message) {
@@ -125,8 +350,12 @@
       function updateControls() {
         recordStartButton.disabled = busy || recording;
         recordStopButton.disabled = busy || !recording;
+        recordRetakeButton.disabled = busy || recording;
         for (const control of lockedControls) {
           control.disabled = busy || recording;
+        }
+        for (const chip of document.querySelectorAll("[data-destination]")) {
+          chip.disabled = busy || recording;
         }
       }
 
@@ -136,10 +365,6 @@
           track.stop();
         }
         microphoneStream = null;
-      }
-
-      function delay(milliseconds) {
-        return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
       }
 
       async function runExclusive(task) {
@@ -330,6 +555,229 @@
           .replace(/[\s　「」『』()（）・,，、]/gu, "");
       }
 
+      function localPlace(name, category, lat, lon, aliases = []) {
+        return {
+          key: normalizePlaceName(name) + "|" + lat.toFixed(4) + "|" + lon.toFixed(4),
+          name,
+          category,
+          lat,
+          lon,
+          aliases: [name, ...aliases],
+        };
+      }
+
+      const LOCAL_DESTINATIONS = [
+        {
+          name: "京都",
+          aliases: ["京都", "京都市", "kyoto"],
+          location: { displayName: "京都市", lat: 35.0116, lon: 135.7681 },
+          attractions: [
+            localPlace("清水寺", "寺院", 34.9949, 135.7850, ["清水観音堂"]),
+            localPlace("伏見稲荷大社", "神社", 34.9671, 135.7727, ["伏見稲荷"]),
+            localPlace("金閣寺", "寺院", 35.0394, 135.7292, ["鹿苑寺"]),
+            localPlace("嵐山・竹林の小径", "散策", 35.0172, 135.6713, ["嵐山", "竹林", "竹林の小径"]),
+            localPlace("天龍寺", "寺院・庭園", 35.0158, 135.6772),
+            localPlace("二条城", "史跡", 35.0142, 135.7482, ["元離宮二条城"]),
+            localPlace("錦市場", "商店街・食べ歩き", 35.0044, 135.7648, ["錦市場商店街"]),
+            localPlace("八坂神社", "神社", 35.0037, 135.7786),
+            localPlace("平安神宮", "神社", 35.0158, 135.7827),
+            localPlace("三十三間堂", "寺院", 34.9876, 135.7717, ["蓮華王院"]),
+          ],
+        },
+        {
+          name: "東京",
+          aliases: ["東京", "tokyo"],
+          location: { displayName: "東京都心", lat: 35.6812, lon: 139.7671 },
+          attractions: [
+            localPlace("浅草寺", "寺院", 35.7148, 139.7967, ["浅草"]),
+            localPlace("東京スカイツリー", "展望スポット", 35.7101, 139.8107, ["スカイツリー"]),
+            localPlace("上野公園", "公園・美術館", 35.7143, 139.7736, ["上野恩賜公園", "上野"]),
+            localPlace("明治神宮", "神社", 35.6764, 139.6993),
+            localPlace("渋谷スクランブル交差点", "街歩き", 35.6595, 139.7005, ["渋谷", "スクランブル交差点"]),
+            localPlace("新宿御苑", "庭園", 35.6852, 139.7100),
+            localPlace("東京タワー", "展望スポット", 35.6586, 139.7454),
+            localPlace("皇居東御苑", "庭園・史跡", 35.6852, 139.7528, ["皇居"]),
+            localPlace("築地場外市場", "市場・食べ歩き", 35.6654, 139.7707, ["築地"]),
+            localPlace("チームラボプラネッツ", "体験施設", 35.6491, 139.7893, ["teamLab Planets", "チームラボ"]),
+          ],
+        },
+        {
+          name: "大阪",
+          aliases: ["大阪", "osaka"],
+          location: { displayName: "大阪市中心部", lat: 34.6937, lon: 135.5023 },
+          attractions: [
+            localPlace("大阪城", "城・公園", 34.6873, 135.5259, ["大阪城公園"]),
+            localPlace("道頓堀", "街歩き・食べ歩き", 34.6687, 135.5013, ["グリコサイン"]),
+            localPlace("黒門市場", "市場・食べ歩き", 34.6655, 135.5062),
+            localPlace("通天閣・新世界", "展望・街歩き", 34.6525, 135.5063, ["通天閣", "新世界"]),
+            localPlace("梅田スカイビル", "展望スポット", 34.7055, 135.4900, ["空中庭園展望台"]),
+            localPlace("海遊館", "水族館", 34.6545, 135.4289),
+            localPlace("四天王寺", "寺院", 34.6545, 135.5167),
+            localPlace("住吉大社", "神社", 34.6121, 135.4914),
+          ],
+        },
+        {
+          name: "奈良",
+          aliases: ["奈良", "奈良市", "nara"],
+          location: { displayName: "奈良市", lat: 34.6851, lon: 135.8048 },
+          attractions: [
+            localPlace("東大寺", "寺院", 34.6889, 135.8398, ["大仏殿"]),
+            localPlace("奈良公園", "公園", 34.6851, 135.8430),
+            localPlace("春日大社", "神社", 34.6814, 135.8489),
+            localPlace("興福寺", "寺院", 34.6831, 135.8324),
+            localPlace("依水園", "庭園", 34.6853, 135.8347),
+            localPlace("ならまち", "街歩き", 34.6758, 135.8316, ["奈良町"]),
+            localPlace("平城宮跡", "史跡・公園", 34.6913, 135.7928, ["平城宮跡歴史公園"]),
+          ],
+        },
+        {
+          name: "広島",
+          aliases: ["広島", "hiroshima"],
+          location: { displayName: "広島市", lat: 34.3977, lon: 132.4750 },
+          attractions: [
+            localPlace("平和記念公園", "公園・平和記念施設", 34.3925, 132.4523, ["広島平和記念公園"]),
+            localPlace("原爆ドーム", "世界遺産・記念施設", 34.3955, 132.4536),
+            localPlace("広島城", "城・博物館", 34.4017, 132.4597),
+            localPlace("縮景園", "庭園", 34.4028, 132.4660),
+            localPlace("嚴島神社", "神社・世界遺産", 34.2958, 132.3197, ["厳島神社", "宮島"]),
+            localPlace("宮島表参道商店街", "街歩き・食べ歩き", 34.2978, 132.3198, ["宮島商店街"]),
+          ],
+        },
+        {
+          name: "福岡",
+          aliases: ["福岡", "福岡市", "fukuoka", "博多"],
+          location: { displayName: "福岡市", lat: 33.5902, lon: 130.4017 },
+          attractions: [
+            localPlace("大濠公園", "公園", 33.5850, 130.3763),
+            localPlace("福岡城跡", "史跡・公園", 33.5846, 130.3834, ["舞鶴公園"]),
+            localPlace("櫛田神社", "神社", 33.5931, 130.4101),
+            localPlace("キャナルシティ博多", "商業施設", 33.5897, 130.4101, ["キャナルシティ"]),
+            localPlace("福岡タワー", "展望スポット", 33.5932, 130.3517),
+            localPlace("太宰府天満宮", "神社", 33.5213, 130.5344, ["太宰府"]),
+            localPlace("博多町家ふるさと館", "博物館", 33.5941, 130.4100),
+          ],
+        },
+        {
+          name: "札幌",
+          aliases: ["札幌", "sapporo"],
+          location: { displayName: "札幌市", lat: 43.0618, lon: 141.3545 },
+          attractions: [
+            localPlace("大通公園", "公園", 43.0598, 141.3469),
+            localPlace("さっぽろテレビ塔", "展望スポット", 43.0610, 141.3564, ["テレビ塔"]),
+            localPlace("札幌市時計台", "歴史的建造物", 43.0625, 141.3538, ["時計台"]),
+            localPlace("北海道庁旧本庁舎", "歴史的建造物", 43.0643, 141.3470, ["赤れんが庁舎"]),
+            localPlace("サッポロビール博物館", "博物館", 43.0713, 141.3690),
+            localPlace("北海道神宮", "神社", 43.0547, 141.3078),
+            localPlace("白い恋人パーク", "体験施設", 43.0889, 141.2720),
+          ],
+        },
+      ];
+
+      const PLACE_PHOTOS = {
+        // Static, locally bundled Wikimedia Commons thumbnails; no image search runs in the browser.
+        "清水寺": { src: "assets/places/kyoto-kiyomizu.jpg", page: "https://commons.wikimedia.org/wiki/File:Kiyomizu-dera,_Kyoto,_November_2016_-07.jpg", credit: "Martin Falbisoner", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "伏見稲荷大社": { src: "assets/places/kyoto-fushimi-inari.jpg", page: "https://commons.wikimedia.org/wiki/File:Torii_path_with_lantern_at_Fushimi_Inari_Taisha_Shrine,_Kyoto,_Japan.jpg", credit: "Basile Morin", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "金閣寺": { src: "assets/places/kyoto-kinkakuji.jpg", page: "https://commons.wikimedia.org/wiki/File:Water_reflection_of_Kinkaku-ji_Temple_a_sunny_day,_Kyoto,_Japan.jpg", credit: "Basile Morin", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "錦市場": { src: "assets/places/kyoto-nishiki.jpg", page: "https://commons.wikimedia.org/wiki/File:Nishiki_ichiba_kyoto.jpg", credit: "Pitan", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "浅草寺": { src: "assets/places/tokyo-sensoji.jpg", page: "https://commons.wikimedia.org/wiki/File:Sensoji_2023.jpg", credit: "Akonnchiroll", license: "CC0 1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" },
+        "東京スカイツリー": { src: "assets/places/tokyo-skytree.jpg", page: "https://commons.wikimedia.org/wiki/File:20181123_Tokyo_Skytree-2.jpg", credit: "Balon Greyjoy", license: "CC0 1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" },
+        "明治神宮": { src: "assets/places/tokyo-meiji-jingu.jpg", page: "https://commons.wikimedia.org/wiki/File:Meiji-jing%C5%AB_grand_torii_d%27entr%C3%A9e.jpg", credit: "Hyppolyte de Saint-Rambert", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "大阪城": { src: "assets/places/osaka-castle.jpg", page: "https://commons.wikimedia.org/wiki/File:Osaka_Castle_02bs3200.jpg", credit: "663highland", license: "CC BY 2.5", licenseUrl: "https://creativecommons.org/licenses/by/2.5/" },
+        "道頓堀": { src: "assets/places/osaka-dotonbori.jpg", page: "https://commons.wikimedia.org/wiki/File:Dotonbori_Canal_2.JPG", credit: "Terence Ong", license: "CC BY 2.5", licenseUrl: "https://creativecommons.org/licenses/by/2.5/" },
+        "東大寺": { src: "assets/places/nara-todaiji.jpg", page: "https://commons.wikimedia.org/wiki/File:T%C5%8Ddai-ji_Temple_in_Nara,_Japan.jpg", credit: "Didier Moïse", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "奈良公園": { src: "assets/places/nara-park.jpg", page: "https://commons.wikimedia.org/wiki/File:Deer_at_Nara.jpg", credit: "Lawsonstu", license: "CC0 1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" },
+        "原爆ドーム": { src: "assets/places/hiroshima-dome.jpg", page: "https://commons.wikimedia.org/wiki/File:Hiroshima_A-Bomb-Dome.jpg", credit: "O-nd", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "嚴島神社": { src: "assets/places/hiroshima-itsukushima.jpg", page: "https://commons.wikimedia.org/wiki/File:Itsukushima_Shinto_Shrine.jpg", credit: "Bernard Gagnon", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "大濠公園": { src: "assets/places/fukuoka-ohori.jpg", page: "https://commons.wikimedia.org/wiki/File:%C5%8Chori_Park_The_Salix_babylonica_%C5%8Chorik%C5%8Den_Ch%C5%AB%C5%8D-ku_Fukuoka_20260609_161719.jpg", credit: "Hirho", license: "CC BY 4.0", licenseUrl: "https://creativecommons.org/licenses/by/4.0/" },
+        "太宰府天満宮": { src: "assets/places/fukuoka-dazaifu.jpg", page: "https://commons.wikimedia.org/wiki/File:Dazaifu_Tenmangu.jpg", credit: "Drivephotographer", license: "CC0 1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" },
+        "札幌市時計台": { src: "assets/places/sapporo-clock-tower.jpg", page: "https://commons.wikimedia.org/wiki/File:Sapporo_clock_tower.JPG", credit: "Brazzy", license: "Public domain", licenseUrl: "https://commons.wikimedia.org/wiki/File:Sapporo_clock_tower.JPG" },
+        "大通公園": { src: "assets/places/sapporo-odori.jpg", page: "https://commons.wikimedia.org/wiki/File:Odori_Park_-_Sapporo.jpg", credit: "shirokazan (加工: MrPanyGoff)", license: "CC BY 2.0", licenseUrl: "https://creativecommons.org/licenses/by/2.0/" },
+        "嵐山竹林の小径": { src: "assets/places/kyoto-arashiyama.jpg", page: "https://commons.wikimedia.org/wiki/File:Bamboo_Grove,_Arashiyama,_Kyoto,_Japan.jpg", credit: "Basile Morin", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "天龍寺": { src: "assets/places/kyoto-tenryuji.jpg", page: "https://commons.wikimedia.org/wiki/File:Tenryu-ji_temple.jpg", credit: "Kotaro (Wikivoyage)", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "二条城": { src: "assets/places/kyoto-nijo-castle.jpg", page: "https://commons.wikimedia.org/wiki/File:Nijo_Castle_1.jpg", credit: "Araisyohei", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "八坂神社": { src: "assets/places/kyoto-yasaka.jpg", page: "https://commons.wikimedia.org/wiki/File:Kyoto_Shinto_Shrine_Yasaka.jpg", credit: "Otto Domes", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "平安神宮": { src: "assets/places/kyoto-heian.jpg", page: "https://commons.wikimedia.org/wiki/File:Heian_Shrine_%40_Kyoto_%2813310604013%29.jpg", credit: "Guilhem Vellut", license: "CC BY 2.0", licenseUrl: "https://creativecommons.org/licenses/by/2.0/" },
+        "三十三間堂": { src: "assets/places/kyoto-sanjusangendo.jpg", page: "https://commons.wikimedia.org/wiki/File:Sanjusangendo-building-dec2013.jpg", credit: "Nesnad", license: "CC BY 3.0", licenseUrl: "https://creativecommons.org/licenses/by/3.0/" },
+        "上野公園": { src: "assets/places/tokyo-ueno.jpg", page: "https://commons.wikimedia.org/wiki/File:Ueno_park.jpg", credit: "Bgag", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "渋谷スクランブル交差点": { src: "assets/places/tokyo-shibuya.jpg", page: "https://commons.wikimedia.org/wiki/File:Shibuya_Scramble_crossing.jpg", credit: "Syced", license: "CC0 1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" },
+        "新宿御苑": { src: "assets/places/tokyo-shinjuku-gyoen.jpg", page: "https://commons.wikimedia.org/wiki/File:Shinjuku_Gyoen_National_Garden.jpg", credit: "Bernie Ongewe", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "東京タワー": { src: "assets/places/tokyo-tower.jpg", page: "https://commons.wikimedia.org/wiki/File:Tokyo_Tower_20060211.JPG", credit: "Eckhard Pecher", license: "CC BY 2.5", licenseUrl: "https://creativecommons.org/licenses/by/2.5/" },
+        "皇居東御苑": { src: "assets/places/tokyo-imperial-garden.jpg", page: "https://commons.wikimedia.org/wiki/File:Imperial_Palace_Tokyo_East_Garden_View.JPG", credit: "Chris 73", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "築地場外市場": { src: "assets/places/tokyo-tsukiji.jpg", page: "https://commons.wikimedia.org/wiki/File:Tsukiji_Outer_Market.jpg", credit: "Christophe95", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "チームラボプラネッツ": { src: "assets/places/tokyo-teamlab-planets.jpg", page: "https://commons.wikimedia.org/wiki/File:Photos_at_teamlab_planets_tokyo.jpg", credit: "Sasa0403", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "黒門市場": { src: "assets/places/osaka-kuromon.jpg", page: "https://commons.wikimedia.org/wiki/File:KUROMON_MARKET_OSAKA_(54676620980).jpg", credit: "ERIC SALARD", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "通天閣新世界": { src: "assets/places/osaka-shinsekai.jpg", page: "https://commons.wikimedia.org/wiki/File:Shinsekai_and_Tsutenkaku_Tower.jpg", credit: "Sakai Yayoi", license: "CC0 1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" },
+        "梅田スカイビル": { src: "assets/places/osaka-umeda-sky-building.jpg", page: "https://commons.wikimedia.org/wiki/File:Umeda_Sky_building.jpg", credit: "Suisui", license: "Public domain", licenseUrl: "https://commons.wikimedia.org/wiki/File:Umeda_Sky_building.jpg" },
+        "海遊館": { src: "assets/places/osaka-kaiyukan.jpg", page: "https://commons.wikimedia.org/wiki/File:Osaka_Aquarium_Kaiyukan.jpg", credit: "Tokumeigakarinoaoshima", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "四天王寺": { src: "assets/places/osaka-shitennoji.jpg", page: "https://commons.wikimedia.org/wiki/File:Shitenno-ji_Temple_%40_Osaka_%2813382596505%29.jpg", credit: "Guilhem Vellut", license: "CC BY 2.0", licenseUrl: "https://creativecommons.org/licenses/by/2.0/" },
+        "住吉大社": { src: "assets/places/osaka-sumiyoshi-taisha.jpg", page: "https://commons.wikimedia.org/wiki/File:Sumiyoshi_Taisha-41.jpg", credit: "Immanuelle", license: "CC BY 4.0", licenseUrl: "https://creativecommons.org/licenses/by/4.0/" },
+        "春日大社": { src: "assets/places/nara-kasuga.jpg", page: "https://commons.wikimedia.org/wiki/File:Kasuga_Taisha_Shrine_%40_Nara_%2813324545923%29.jpg", credit: "Guilhem Vellut", license: "CC BY 2.0", licenseUrl: "https://creativecommons.org/licenses/by/2.0/" },
+        "興福寺": { src: "assets/places/nara-kofukuji.jpg", page: "https://commons.wikimedia.org/wiki/File:Kofukuji12st5s3200.jpg", credit: "663highland", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "依水園": { src: "assets/places/nara-isuien.jpg", page: "https://commons.wikimedia.org/wiki/File:Isuien_Nara02bs4592.jpg", credit: "663highland", license: "CC BY 2.5", licenseUrl: "https://creativecommons.org/licenses/by/2.5/" },
+        "ならまち": { src: "assets/places/nara-naramachi.jpg", page: "https://commons.wikimedia.org/wiki/File:Naramachii01n3200.jpg", credit: "663highland", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "平城宮跡": { src: "assets/places/nara-heijo-palace.jpg", page: "https://commons.wikimedia.org/wiki/File:Heijo_Palace_in_Nara.jpg", credit: "Cun Cun", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "平和記念公園": { src: "assets/places/hiroshima-peace-park.jpg", page: "https://commons.wikimedia.org/wiki/File:Peace_Memorial_Park_and_Cenotaph,_Hiroshima,_South_view_20190417_1.jpg", credit: "DXR", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "広島城": { src: "assets/places/hiroshima-castle.jpg", page: "https://commons.wikimedia.org/wiki/File:Hiroshima_Castle,_Japan,_20240817_1508_4300.jpg", credit: "Jakub Hałun", license: "CC BY 4.0", licenseUrl: "https://creativecommons.org/licenses/by/4.0/" },
+        "縮景園": { src: "assets/places/hiroshima-shukkeien.jpg", page: "https://commons.wikimedia.org/wiki/File:Hiroshima_Shukkeien_hdsr_Garden_S5_20.jpg", credit: "Hyppolyte de Saint-Rambert", license: "CC BY 4.0", licenseUrl: "https://creativecommons.org/licenses/by/4.0/" },
+        "宮島表参道商店街": { src: "assets/places/hiroshima-miyajima-shopping.jpg", page: "https://commons.wikimedia.org/wiki/File:Miyajima_shopping_street.jpg", credit: "Trsqr", license: "CC BY-SA 2.5", licenseUrl: "https://creativecommons.org/licenses/by-sa/2.5/" },
+        "福岡城跡": { src: "assets/places/fukuoka-castle.jpg", page: "https://commons.wikimedia.org/wiki/File:Fukuoka_Castle_20170225.jpg", credit: "Suicasmo", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "櫛田神社": { src: "assets/places/fukuoka-kushida.jpg", page: "https://commons.wikimedia.org/wiki/File:Kushida_shrine_in_Fukuoka_-_2024_Sep_24_25_11_09_20_858000.jpeg", credit: "Nesnad", license: "CC BY 4.0", licenseUrl: "https://creativecommons.org/licenses/by/4.0/" },
+        "キャナルシティ博多": { src: "assets/places/fukuoka-canal-city.jpg", page: "https://commons.wikimedia.org/wiki/File:Canal_City_Hakata.jpg", credit: "ltsc1980", license: "CC BY-SA 2.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/2.0/" },
+        "福岡タワー": { src: "assets/places/fukuoka-tower.jpg", page: "https://commons.wikimedia.org/wiki/File:Fukuoka_tower.jpg", credit: "Muyo", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "博多町家ふるさと館": { src: "assets/places/fukuoka-hakata-machiya.jpg", page: "https://commons.wikimedia.org/wiki/File:Hakata_Machiya_Folk_Museum_and_Kushida-jinja_Reisenmachi_and_Kami-kawabatamachi_Hakata-ku_Fukuoka_20231128.jpg", credit: "Hirho", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+        "さっぽろテレビ塔": { src: "assets/places/sapporo-tv-tower.jpg", page: "https://commons.wikimedia.org/wiki/File:Sapporo_TV_Tower_20081223.JPG", credit: "レジリデンス (RJD)", license: "CC BY 3.0", licenseUrl: "https://creativecommons.org/licenses/by/3.0/" },
+        "北海道庁旧本庁舎": { src: "assets/places/sapporo-government-office.jpg", page: "https://commons.wikimedia.org/wiki/File:Former_Hokkaid%C5%8D_Government_Office_05.jpg", credit: "ノボホショコロトソ", license: "CC BY 4.0", licenseUrl: "https://creativecommons.org/licenses/by/4.0/" },
+        "サッポロビール博物館": { src: "assets/places/sapporo-beer-museum.jpg", page: "https://commons.wikimedia.org/wiki/File:Sapporo_Beer_Museum.jpg", credit: "MIKI Yoshihito", license: "CC BY 2.0", licenseUrl: "https://creativecommons.org/licenses/by/2.0/" },
+        "北海道神宮": { src: "assets/places/sapporo-hokkaido-jingu.jpg", page: "https://commons.wikimedia.org/wiki/File:Hokkaido_Jingu_Torii_in_the_snow.jpg", credit: "t-konno", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/" },
+        "白い恋人パーク": { src: "assets/places/sapporo-shiroi-koibito-park.jpg", page: "https://commons.wikimedia.org/wiki/File:Shiroi_Koibito_Park_20260703d.jpg", credit: "掬茶", license: "CC BY-SA 4.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/" },
+      };
+
+      const PLACE_TICKETS = {
+        "金閣寺": { amount: 500, source: "https://www.shokoku-ji.jp/kinkakuji/access/" },
+        "天龍寺": { amount: 500, source: "https://www.tenryuji.com/visit/" },
+        "二条城": { amount: 800, source: "https://nijo-jocastle.city.kyoto.lg.jp/admission/fee/" },
+        "平安神宮": { amount: 600, note: "神苑の大人料金", source: "https://www.heianjingu.or.jp/map/garden/" },
+        "三十三間堂": { amount: 600, source: "https://www.sanjusangendo.jp/visit/" },
+        "東大寺": { amount: 800, note: "大仏殿の大人拝観料", source: "https://www.todaiji.or.jp/information/haikan/" },
+        "東京スカイツリー": { amount: 1800, note: "天望デッキの大人最低料金。日付で変動", source: "https://www.tokyo-skytree.jp/ticket/" },
+        "東京タワー": { amount: 1500, note: "メインデッキの大人料金", source: "https://ticket.tokyotower.co.jp/" },
+        "新宿御苑": { amount: 500, source: "https://policies.env.go.jp/national-garden/shinjukugyoen/guide/information/" },
+        "大阪城": { amount: 1200, note: "天守閣の大人入館料", source: "https://www.osakacastle.net/guide/?lang=ja" },
+        "海遊館": { amount: null, note: "日付による変動料金", source: "https://www.kaiyukan.com/info/ticket/kaiyukan/" },
+        "嚴島神社": { amount: 300, note: "神社の大人昇殿料。宮島への船代は別", source: "https://www.itsukushimajinja.jp/jp/admission.html" },
+        "福岡タワー": { amount: 1000, note: "展望料金の大人料金", source: "https://www.fukuokatower.co.jp/" },
+        "博多町家ふるさと館": { amount: 200, source: "https://hakatamachiya.com/access/" },
+      };
+
+      const VISIT_MINUTES = {
+        "清水寺": 90, "伏見稲荷大社": 120, "金閣寺": 60, "嵐山竹林の小径": 60,
+        "天龍寺": 75, "二条城": 120, "錦市場": 90, "八坂神社": 45,
+        "平安神宮": 75, "三十三間堂": 60, "浅草寺": 90, "東京スカイツリー": 120,
+        "上野公園": 120, "明治神宮": 60, "渋谷スクランブル交差点": 60,
+        "新宿御苑": 120, "東京タワー": 90, "皇居東御苑": 90, "築地場外市場": 90,
+        "チームラボプラネッツ": 150, "大阪城": 120, "道頓堀": 90, "黒門市場": 90,
+        "通天閣新世界": 90, "梅田スカイビル": 90, "海遊館": 180, "四天王寺": 60,
+        "住吉大社": 60, "東大寺": 120, "奈良公園": 120, "春日大社": 90,
+        "興福寺": 75, "依水園": 75, "ならまち": 120, "平城宮跡": 120,
+        "平和記念公園": 60, "原爆ドーム": 30, "広島城": 90, "縮景園": 60,
+        "嚴島神社": 90, "宮島表参道商店街": 90, "大濠公園": 60, "福岡城跡": 60,
+        "櫛田神社": 45, "キャナルシティ博多": 90, "福岡タワー": 90,
+        "太宰府天満宮": 90, "博多町家ふるさと館": 60, "大通公園": 60,
+        "さっぽろテレビ塔": 60, "札幌市時計台": 45, "北海道庁旧本庁舎": 60,
+        "サッポロビール博物館": 90, "北海道神宮": 60, "白い恋人パーク": 120,
+      };
+
+      const ticketOverrides = new Map();
+
+      function findDestinationGuide(destination) {
+        const normalized = normalizePlaceName(destination);
+        const matches = LOCAL_DESTINATIONS
+          .flatMap((guide) => guide.aliases.map((alias) => ({ guide, alias: normalizePlaceName(alias) })))
+          .filter((candidate) => normalized.includes(candidate.alias))
+          .sort((a, b) => b.alias.length - a.alias.length);
+        return matches[0]?.guide || null;
+      }
+
       function addPreferredParts(candidate, destination, output, seen) {
         let cleaned = withoutDuration(candidate)
           .replace(/(?:行きたいところ|行きたい場所|観光地|希望は|ここは|特に|絶対に?|必ず|ぜひ|できれば|あと|それから|そして|私|わたし|僕|ぼく|です|ます)/gu, "")
@@ -490,6 +938,13 @@
         }
       }
 
+      function retakeRecording() {
+        if (busy || recording) return;
+        transcriptInput.value = "";
+        setStatus("前回の文字起こしを消しました。新しく録音します。");
+        startRecording();
+      }
+
       async function transcribeBlob(blob) {
         setStatus("音声をモノラル16kHzへ変換しています...");
         const audio = await blobToMono16k(blob);
@@ -506,228 +961,6 @@
         }
         transcriptInput.value = text.trim();
         applyTranscriptConditions();
-      }
-
-      function endpointUrl(value, label) {
-        let url;
-        try {
-          url = new URL(value.trim());
-        } catch {
-          throw new Error(label + "のURLを確認してください。");
-        }
-        if (url.protocol !== "https:") {
-          throw new Error(label + "にはHTTPSのURLを指定してください。");
-        }
-        return url.toString();
-      }
-
-      function currentEndpoints() {
-        return {
-          geocoder: endpointUrl(geocoderEndpointInput.value || DEFAULT_GEOCODER, "地名検索API"),
-          overpass: endpointUrl(overpassEndpointInput.value || DEFAULT_OVERPASS, "観光地検索API"),
-        };
-      }
-
-      function loadSavedEndpoints() {
-        try {
-          geocoderEndpointInput.value = localStorage.getItem("travel-planner-geocoder") || DEFAULT_GEOCODER;
-          overpassEndpointInput.value = localStorage.getItem("travel-planner-overpass") || DEFAULT_OVERPASS;
-        } catch (error) {
-          console.warn("API設定を読み込めませんでした。", error);
-        }
-      }
-
-      function saveApiSettings() {
-        try {
-          const endpoints = currentEndpoints();
-          try {
-            localStorage.setItem("travel-planner-geocoder", endpoints.geocoder);
-            localStorage.setItem("travel-planner-overpass", endpoints.overpass);
-          } catch (error) {
-            console.warn("API設定を保存できませんでした。", error);
-          }
-          setStatus("API設定をこのブラウザに保存しました。");
-        } catch (error) {
-          setStatus("API設定を保存できませんでした: " + (error.message || error));
-        }
-      }
-
-      async function fetchWithTimeout(url, options, timeoutMs) {
-        const controller = new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          return await fetch(url, { ...options, signal: controller.signal });
-        } catch (error) {
-          if (error.name === "AbortError") {
-            throw new Error("地図データAPIの応答がタイムアウトしました。時間をおいて再度お試しください。");
-          }
-          throw new Error("地図データAPIに接続できませんでした。ネットワークやAPI設定を確認してください。");
-        } finally {
-          window.clearTimeout(timer);
-        }
-      }
-
-      async function geocodeDestination(destination, endpoint) {
-        const cacheKey = endpoint + "|" + destination.trim().toLocaleLowerCase("ja-JP");
-        if (geocoderCache.has(cacheKey)) return geocoderCache.get(cacheKey);
-
-        const waitMs = Math.max(0, 1000 - (Date.now() - lastGeocoderRequestAt));
-        if (waitMs > 0) await delay(waitMs);
-
-        const url = new URL(endpoint);
-        url.searchParams.set("format", "jsonv2");
-        url.searchParams.set("q", destination);
-        url.searchParams.set("limit", "1");
-        url.searchParams.set("accept-language", "ja");
-
-        lastGeocoderRequestAt = Date.now();
-        const response = await fetchWithTimeout(url, {}, 15000);
-        if (!response.ok) {
-          if (response.status === 429) {
-            throw new Error("地名検索APIの利用制限に達しました。しばらくしてから再度お試しください。");
-          }
-          throw new Error("行き先を検索できませんでした（HTTP " + response.status + "）。");
-        }
-        const matches = await response.json();
-        if (!Array.isArray(matches) || matches.length === 0) {
-          throw new Error("行き先が見つかりませんでした。市区町村名などに直して再度お試しください。");
-        }
-
-        const location = {
-          displayName: matches[0].display_name || destination,
-          lat: Number(matches[0].lat),
-          lon: Number(matches[0].lon),
-        };
-        if (!Number.isFinite(location.lat) || !Number.isFinite(location.lon)) {
-          throw new Error("行き先の位置情報を読み取れませんでした。");
-        }
-        geocoderCache.set(cacheKey, location);
-        return location;
-      }
-
-      function escapeOverpassRegex(value) {
-        const specialCharacters = "\\^$.*+?()[]{}|";
-        let escaped = "";
-        for (const character of value) {
-          if (specialCharacters.includes(character)) escaped += "\\";
-          escaped += character;
-        }
-        return escaped;
-      }
-
-      function quoteOverpassString(value) {
-        return '"' + value.replaceAll("\\", "\\\\").replaceAll('"', '\\"') + '"';
-      }
-
-      function buildOverpassQuery(location, radius, mustSeeNames) {
-        const around = "(around:" + radius + "," + location.lat.toFixed(6) + "," + location.lon.toFixed(6) + ")";
-        let query = "[out:json][timeout:25];\n";
-
-        if (mustSeeNames.length > 0) {
-          const namesRegex = mustSeeNames
-            .slice(0, 12)
-            .map(escapeOverpassRegex)
-            .join("|");
-          query += ["(", "  nwr" + around + '["name"~' + quoteOverpassString(namesRegex) + ",i];", ")", "out center;", ""].join("\n");
-        }
-
-        query += [
-          "(",
-          '  nwr' + around + '["tourism"~"^(attraction|museum|viewpoint|zoo|aquarium|theme_park|gallery|artwork)$"]["name"];',
-          '  nwr' + around + '["historic"~"^(castle|monument|memorial|archaeological_site|ruins)$"]["name"];',
-          '  nwr' + around + '["leisure"~"^(park|garden)$"]["name"];',
-          ")",
-          "out center 200;",
-        ].join("\n");
-        return query;
-      }
-
-      async function fetchAttractions(location, radius, mustSeeNames, endpoint) {
-        const cacheKey = JSON.stringify([
-          endpoint,
-          location.lat.toFixed(4),
-          location.lon.toFixed(4),
-          radius,
-          mustSeeNames.slice(0, 12).map(normalizePlaceName).sort(),
-        ]);
-        if (attractionCache.has(cacheKey)) return attractionCache.get(cacheKey);
-
-        const query = buildOverpassQuery(location, radius, mustSeeNames);
-        const options = {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-          body: "data=" + encodeURIComponent(query),
-        };
-        let response = await fetchWithTimeout(endpoint, options, 35000);
-        if (response.status === 429 || response.status === 406) {
-          setStatus("観光地検索APIが混み合っています。30秒待ってから再試行します...");
-          await delay(30000);
-          response = await fetchWithTimeout(endpoint, options, 35000);
-        }
-        if (!response.ok) {
-          throw new Error("観光地を検索できませんでした（HTTP " + response.status + "）。");
-        }
-
-        const data = await response.json();
-        if (!data || !Array.isArray(data.elements)) {
-          throw new Error("観光地検索APIの応答形式が想定と異なります。");
-        }
-        attractionCache.set(cacheKey, data.elements);
-        return data.elements;
-      }
-
-      function coordinatesOf(element) {
-        if (Number.isFinite(element.lat) && Number.isFinite(element.lon)) {
-          return { lat: element.lat, lon: element.lon };
-        }
-        if (element.center && Number.isFinite(element.center.lat) && Number.isFinite(element.center.lon)) {
-          return { lat: element.center.lat, lon: element.center.lon };
-        }
-        return null;
-      }
-
-      function categoryOf(tags) {
-        const value = tags.tourism || tags.historic || tags.leisure || "attraction";
-        const categories = {
-          attraction: "観光スポット",
-          museum: "博物館・美術館",
-          viewpoint: "展望地",
-          zoo: "動物園",
-          aquarium: "水族館",
-          theme_park: "テーマパーク",
-          gallery: "ギャラリー",
-          artwork: "アート",
-          castle: "城",
-          monument: "記念碑",
-          memorial: "記念施設",
-          archaeological_site: "史跡",
-          ruins: "遺跡",
-          park: "公園",
-          garden: "庭園",
-        };
-        return categories[value] || "観光スポット";
-      }
-
-      function parseAttractions(elements) {
-        const unique = new Map();
-        for (const element of elements) {
-          const tags = element.tags || {};
-          const name = (tags.name || "").trim();
-          const point = coordinatesOf(element);
-          if (!name || !point) continue;
-
-          const key = normalizePlaceName(name) + "|" + point.lat.toFixed(3) + "|" + point.lon.toFixed(3);
-          if (unique.has(key)) continue;
-          unique.set(key, {
-            name,
-            lat: point.lat,
-            lon: point.lon,
-            category: categoryOf(tags),
-            tags,
-            key,
-          });
-        }
-        return Array.from(unique.values());
       }
 
       function distanceKm(a, b) {
@@ -750,14 +983,16 @@
           if (!requested) continue;
           const found = attractions
             .filter((place) => {
-              const name = normalizePlaceName(place.name);
-              return name === requested ||
-                (requested.length >= 2 && name.includes(requested)) ||
-                (name.length >= 3 && requested.includes(name));
+              return (place.aliases || [place.name]).some((alias) => {
+                const name = normalizePlaceName(alias);
+                return name === requested ||
+                  (requested.length >= 2 && name.includes(requested)) ||
+                  (name.length >= 3 && requested.includes(name));
+              });
             })
             .sort((a, b) => {
-              const aExact = normalizePlaceName(a.name) === requested ? 0 : 1;
-              const bExact = normalizePlaceName(b.name) === requested ? 0 : 1;
+              const aExact = (a.aliases || [a.name]).some((alias) => normalizePlaceName(alias) === requested) ? 0 : 1;
+              const bExact = (b.aliases || [b.name]).some((alias) => normalizePlaceName(alias) === requested) ? 0 : 1;
               return aExact - bExact;
             })[0];
 
@@ -794,19 +1029,42 @@
         return ordered;
       }
 
+      const RECOMMENDATION_IDEAS = [
+        "街なかをゆっくり散策する",
+        "地元の名物グルメを楽しむ",
+        "商店街や市場をめぐる",
+        "カフェや甘味処で休憩する",
+        "公園や緑の多い場所で過ごす",
+        "見晴らしのよい場所から街を眺める",
+        "地域の歴史や文化にふれる",
+        "おみやげを探しながら街を歩く",
+        "朝の街歩きを楽しむ",
+        "夕景や夜景を楽しむ",
+        "雨の日に楽しめる屋内スポットを探す",
+        "季節の自然や花を楽しむ",
+        "地元の体験やワークショップを探す",
+        "温泉や銭湯でひと休みする",
+      ];
+
       function buildItinerary(location, attractions, requestedNames, dayCount) {
         const mustSee = matchMustSee(requestedNames, attractions);
-        const mustOrder = nearestOrder(mustSee.matched, location);
+        const customMustSee = mustSee.unmatched.map((name) => ({
+          ...localPlace(name, "希望スポット", location.lat, location.lon, [name]),
+          mustSee: true,
+          customLocation: true,
+        }));
+        const mustPlaces = [...mustSee.matched, ...customMustSee];
+        const mustOrder = nearestOrder(mustSee.matched, location).concat(customMustSee);
         const days = Array.from({ length: dayCount }, () => []);
         mustOrder.forEach((place, index) => {
           const dayIndex = Math.min(dayCount - 1, Math.floor(index * dayCount / mustOrder.length));
           days[dayIndex].push(place);
         });
 
-        const used = new Set(mustSee.matched.map((place) => place.key));
+        const used = new Set(mustPlaces.map((place) => place.key));
         const optional = attractions.filter((place) => !used.has(place.key));
-        const optionalBudget = Math.max(0, dayCount * 4 - mustSee.matched.length);
-        const plannedCount = mustSee.matched.length + Math.min(optional.length, optionalBudget);
+        const optionalBudget = Math.max(0, dayCount * 4 - mustPlaces.length);
+        const plannedCount = mustPlaces.length + Math.min(optional.length, optionalBudget);
         const targetPerDay = Math.min(4, Math.ceil(plannedCount / dayCount));
         for (let round = 0; round < targetPerDay; round++) {
           for (const day of days) {
@@ -824,31 +1082,238 @@
             day.push(optional.splice(bestIndex, 1)[0]);
           }
         }
-        return { days, unmatched: mustSee.unmatched, matchedCount: mustSee.matched.length };
+
+        let recommendationCount = 0;
+        for (let dayIndex = 0; dayIndex < days.length; dayIndex++) {
+          while (days[dayIndex].length < 4) {
+            const name = RECOMMENDATION_IDEAS[recommendationCount % RECOMMENDATION_IDEAS.length];
+            const recommendation = localPlace(name, "おすすめの過ごし方", location.lat, location.lon, [name]);
+            recommendation.recommendation = true;
+            days[dayIndex].push(recommendation);
+            recommendationCount++;
+          }
+        }
+
+        return {
+          days,
+          customCount: customMustSee.length,
+          matchedCount: mustPlaces.length,
+          recommendationCount,
+        };
       }
 
-      function timeForIndex(index) {
-        const standard = ["09:00", "11:00", "14:00", "16:00"];
-        if (standard[index]) return standard[index];
-        const hour = 17 + index - standard.length;
-        return String(hour).padStart(2, "0") + ":00";
+      function clockMinutes(value) {
+        const [hours, minutes] = value.split(":").map(Number);
+        return hours * 60 + minutes;
       }
 
-      function mapLinkFor(place) {
-        const url = new URL("https://www.openstreetmap.org/");
-        url.hash = "map=16/" + place.lat + "/" + place.lon;
+      function clockText(totalMinutes) {
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
+      }
+
+      function estimateLocalTravelMinutes(from, to, mode) {
+        if (!from || !to || from.customLocation || to.customLocation || from.recommendation || to.recommendation) {
+          return 30;
+        }
+        const hasCoordinates = (place) => Number.isFinite(place.lat) && Number.isFinite(place.lon) &&
+          (place.lat !== 0 || place.lon !== 0);
+        if (!hasCoordinates(from) || !hasCoordinates(to)) return 30;
+
+        const profiles = {
+          transit: { factor: 1.7, speedKmh: 25, overhead: 10, minimum: 10 },
+          car: { factor: 1.4, speedKmh: 30, overhead: 6, minimum: 10 },
+          walk: { factor: 1.2, speedKmh: 4.5, overhead: 0, minimum: 5 },
+        };
+        const profile = profiles[mode] || profiles.transit;
+        const estimate = distanceKm(from, to) * profile.factor / profile.speedKmh * 60 + profile.overhead;
+        return Math.max(profile.minimum, Math.round(estimate / 5) * 5);
+      }
+
+      function estimateVisitMinutes(place) {
+        return VISIT_MINUTES[normalizePlaceName(place.name)] ?? 60;
+      }
+
+      function estimatedDistanceKm(from, to) {
+        const hasCoordinates = (place) => place && Number.isFinite(place.lat) && Number.isFinite(place.lon) &&
+          (place.lat !== 0 || place.lon !== 0) && !place.customLocation && !place.recommendation;
+        if (!hasCoordinates(from) || !hasCoordinates(to)) return null;
+        return distanceKm(from, to);
+      }
+
+      function buildYahooTransitUrl(entry, travelSettings) {
+        const url = new URL("https://transit.yahoo.co.jp/search/result");
+        url.searchParams.set("from", entry.from.name);
+        url.searchParams.set("to", entry.to.name);
+        url.searchParams.set("type", "1");
+        url.searchParams.set("ticket", "ic");
+        url.searchParams.set("shin", "1");
+        url.searchParams.set("ex", "1");
+        url.searchParams.set("hb", "1");
+        url.searchParams.set("lb", "1");
+        url.searchParams.set("sr", "1");
+        const [hours, minutes] = clockText(entry.time).split(":");
+        url.searchParams.set("hh", String(Number(hours) % 24));
+        url.searchParams.set("m1", minutes[0]);
+        url.searchParams.set("m2", minutes[1]);
+        if (travelSettings.date) {
+          const [year, month, day] = travelSettings.date.split("-");
+          url.searchParams.set("y", year);
+          url.searchParams.set("m", String(Number(month)));
+          url.searchParams.set("d", String(Number(day)));
+        }
         return url.href;
       }
 
-      function renderItinerary(destination, location, radius, itinerary, dayCount) {
+      function buildPlaceDetailsUrl(place, location, destination) {
+        const url = new URL("https://www.google.com/maps/search/");
+        url.searchParams.set("api", "1");
+        url.searchParams.set(
+          "query",
+          [place.name, location?.displayName || destination].filter(Boolean).join(" "),
+        );
+        return url.href;
+      }
+
+      function buildDayTimeline(places, dayIndex, dayCount, travelSettings) {
+        const entries = [];
+        let currentTime = 9 * 60;
+        const hasOriginJourney = Boolean(travelSettings.origin);
+
+        if (hasOriginJourney && dayIndex === 0 && places.length > 0) {
+          currentTime = clockMinutes(travelSettings.departureTime);
+          const from = { name: travelSettings.origin };
+          const to = places[0].recommendation ? { name: travelSettings.centerName } : places[0];
+          entries.push({
+            type: "travel",
+            time: currentTime,
+            from,
+            to,
+            travelMinutes: travelSettings.originTravelMinutes,
+            arrivalTime: currentTime + travelSettings.originTravelMinutes,
+            distanceKm: estimatedDistanceKm(from, to),
+          });
+          currentTime += travelSettings.originTravelMinutes;
+        }
+
+        for (let placeIndex = 0; placeIndex < places.length; placeIndex++) {
+          const place = places[placeIndex];
+
+          if (placeIndex === 2 && places.length >= 3) {
+            currentTime = Math.max(currentTime, 12 * 60 + 30);
+            entries.push({ type: "break", time: currentTime, duration: 45, text: "昼食・休憩" });
+            currentTime += 45;
+          }
+
+          if (placeIndex > 0) {
+            const previous = places[placeIndex - 1];
+            const travelMinutes = estimateLocalTravelMinutes(previous, place, travelSettings.mode);
+            entries.push({
+              type: "travel",
+              time: currentTime,
+              from: previous,
+              to: place,
+              travelMinutes,
+              arrivalTime: currentTime + travelMinutes,
+              distanceKm: estimatedDistanceKm(previous, place),
+              genericRoute: previous.recommendation || place.recommendation,
+            });
+            currentTime += travelMinutes;
+          } else if (!(hasOriginJourney && dayIndex === 0)) {
+            currentTime = Math.max(currentTime, 9 * 60);
+          }
+
+          const visitMinutes = estimateVisitMinutes(place);
+          entries.push({
+            type: "place",
+            time: currentTime,
+            endTime: currentTime + visitMinutes,
+            visitMinutes,
+            place,
+            placeIndex,
+          });
+          currentTime += visitMinutes;
+        }
+
+        if (hasOriginJourney && dayIndex === dayCount - 1 && places.length > 0) {
+          const lastPlace = places[places.length - 1];
+          const from = lastPlace.recommendation ? { name: travelSettings.centerName } : lastPlace;
+          const to = { name: travelSettings.origin };
+          entries.push({
+            type: "travel",
+            time: currentTime,
+            from,
+            to,
+            travelMinutes: travelSettings.originTravelMinutes,
+            arrivalTime: currentTime + travelSettings.originTravelMinutes,
+            distanceKm: estimatedDistanceKm(from, to),
+          });
+        }
+
+        return entries;
+      }
+
+      function updateTicketTotal() {
+        const totalOutput = planOutput.querySelector(".ticket-total");
+        if (!totalOutput) return;
+        let total = 0;
+        let counted = 0;
+        let unconfirmed = 0;
+        for (const input of planOutput.querySelectorAll("[data-ticket-cost]")) {
+          if (input.value.trim() === "") {
+            unconfirmed++;
+            continue;
+          }
+          const amount = Number(input.value);
+          if (!Number.isFinite(amount) || amount < 0) continue;
+          total += amount;
+          counted++;
+        }
+        totalOutput.textContent = "入場料合計（大人1名分・入力済み " + counted + "か所）: " +
+          total.toLocaleString("ja-JP") + "円" +
+          (unconfirmed > 0 ? " ／ 未確認 " + unconfirmed + "か所は合計に含みません" : "");
+      }
+
+      function renderItinerary(destination, location, itinerary, dayCount, hasGuide, travelSettings) {
         const fragment = document.createDocumentFragment();
         const heading = document.createElement("h2");
         heading.textContent = destination + "の旅行プラン（" + dayCount + "日間）";
         fragment.append(heading);
 
         const locationLine = document.createElement("p");
-        locationLine.textContent = "検索地点: " + location.displayName + " / 周辺約" + (radius / 1000) + "km";
+        locationLine.textContent = hasGuide
+          ? location.displayName + "の内蔵候補を、近い場所が続くように並べた目安です。"
+          : itinerary.customCount > 0
+            ? "内蔵ガイド未対応の行き先です。入力された希望スポットを中心に予定を組みました。"
+            : "内蔵ガイド未対応の行き先です。散策や食事などのおすすめアイデアで日程を作りました。";
         fragment.append(locationLine);
+
+        const travelNote = document.createElement("p");
+        travelNote.textContent = travelSettings.mode === "transit"
+          ? "出発駅からの行き帰りは片道60分を仮置きしています。予定表には各区間の出発・到着時刻と所要時間の目安を表示し、実際の列車・新幹線名、乗換、発着時刻、運賃は区間ごとのYahoo!路線情報リンク先に表示します。スポット間の目安時間は直線距離からの概算です。"
+          : "出発駅からの行き帰りは片道60分を仮置きしています。各区間に出発・到着時刻と所要時間の目安を表示します。スポット間は直線距離から計算するため、実際の所要時間は道路状況や徒歩ルートで変わります。列車の時刻・運賃を見るには移動手段を「電車・バス中心」にしてください。";
+        fragment.append(travelNote);
+
+        const ticketNote = document.createElement("p");
+        ticketNote.textContent = "滞在時間と入場料は大人1名分の目安です。確認できた料金は入力済みで、未確認・変動制の料金は空欄から入力できます。列車の運賃は区間ごとの検索先で確認してください。";
+        fragment.append(ticketNote);
+
+        const ticketTotal = document.createElement("p");
+        ticketTotal.className = "ticket-total";
+        fragment.append(ticketTotal);
+
+        if (itinerary.recommendationCount > 0) {
+          const recommendationNote = document.createElement("p");
+          recommendationNote.textContent = "スポット数が少ない日も1日4つの時間枠になるよう、散策・食事・休憩などのおすすめ案を加えています。店や施設を特定したものではないため、実際に行く場所は現地で確認してください。";
+          fragment.append(recommendationNote);
+        }
+
+        if (itinerary.customCount > 0) {
+          const customNote = document.createElement("p");
+          customNote.textContent = "内蔵候補にない希望スポットを入力順に追加しました。場所や移動時間を確認してください。";
+          fragment.append(customNote);
+        }
 
         if (itinerary.matchedCount > dayCount * 4) {
           const denseNote = document.createElement("p");
@@ -864,32 +1329,153 @@
 
           if (places.length === 0) {
             const empty = document.createElement("p");
-            empty.textContent = "この日の候補は見つかりませんでした。検索範囲や旅行日数を調整してください。";
+            empty.textContent = "おすすめ案: " + RECOMMENDATION_IDEAS[dayIndex % RECOMMENDATION_IDEAS.length] + "。具体的な施設名は現地で確認してください。";
             section.append(empty);
           } else {
             const list = document.createElement("ol");
-            places.forEach((place, placeIndex) => {
-              if (placeIndex === 2) {
-                const breakItem = document.createElement("li");
-                breakItem.textContent = "12:30 昼食・休憩";
-                list.append(breakItem);
+            const timeline = buildDayTimeline(places, dayIndex, dayCount, travelSettings);
+            timeline.forEach((entry) => {
+              if (entry.type === "travel") {
+                const timelineItem = document.createElement("li");
+                timelineItem.className = "travel-entry";
+                timelineItem.append(
+                  document.createTextNode(
+                    clockText(entry.time) + "　" +
+                      (entry.genericRoute
+                        ? travelSettings.centerName + "周辺を移動"
+                        : entry.from.name + " → " + entry.to.name) +
+                      "／" + (travelSettings.mode === "transit" ? "電車・バス" : travelSettings.mode === "car" ? "車" : "徒歩") +
+                      "の目安 " + entry.travelMinutes + "分" +
+                      (entry.distanceKm === null ? "" : "（直線距離 約" + entry.distanceKm.toFixed(1) + "km）") +
+                      "／到着 " + clockText(entry.arrivalTime),
+                  ),
+                );
+                if (travelSettings.mode === "transit" && !entry.genericRoute) {
+                  const routeDetail = document.createElement("small");
+                  routeDetail.className = "route-detail";
+                  const routeLink = document.createElement("a");
+                  routeLink.href = buildYahooTransitUrl(entry, travelSettings);
+                  routeLink.target = "_blank";
+                  routeLink.rel = "noreferrer noopener";
+                  routeLink.textContent = "この区間の電車・新幹線・乗換時刻・運賃をYahoo!で表示 ↗";
+                  routeDetail.append(routeLink);
+                  timelineItem.append(routeDetail);
+                }
+                list.append(timelineItem);
+                return;
               }
 
-              const item = document.createElement("li");
-              const time = document.createElement("strong");
-              time.textContent = timeForIndex(placeIndex) + " ";
-              item.append(time);
+              if (entry.type === "break") {
+                const timelineItem = document.createElement("li");
+                timelineItem.className = "travel-entry";
+                timelineItem.textContent = clockText(entry.time) + "　昼食・休憩（" + entry.duration + "分）";
+                list.append(timelineItem);
+                return;
+              }
 
-              const link = document.createElement("a");
-              link.href = mapLinkFor(place);
-              link.target = "_blank";
-              link.rel = "noopener noreferrer";
-              link.textContent = place.name;
-              item.append(link);
+              const { place } = entry;
+              const item = document.createElement("li");
+              const photo = PLACE_PHOTOS[normalizePlaceName(place.name)];
+              const ticketInfo = PLACE_TICKETS[normalizePlaceName(place.name)];
+              if (photo) {
+                item.className = "has-photo";
+                const image = document.createElement("img");
+                image.className = "place-photo";
+                image.src = photo.src;
+                image.alt = place.name + "の写真";
+                image.loading = "lazy";
+                image.decoding = "async";
+                item.append(image);
+              }
+              const info = document.createElement("div");
+              if (photo) info.className = "place-info";
+              const time = document.createElement("strong");
+              time.textContent = clockText(entry.time) + " ";
+              info.append(time);
+
+              const name = document.createElement("span");
+              name.className = "place-name";
+              name.textContent = place.name;
+              info.append(name);
 
               const details = document.createElement("span");
-              details.textContent = " — " + place.category + (place.mustSee ? "（希望スポット）" : "");
-              item.append(details);
+              details.className = "place-category";
+              details.textContent = " — " + place.category +
+                (place.mustSee ? "（希望スポット）" : place.recommendation ? "（施設名は現地で確認）" : "");
+              info.append(details);
+
+              const visitDetails = document.createElement("small");
+              visitDetails.className = "route-detail";
+              visitDetails.textContent = "滞在目安 " + entry.visitMinutes + "分（" +
+                clockText(entry.time) + "〜" + clockText(entry.endTime) + "）";
+              info.append(visitDetails);
+
+              if (!place.recommendation) {
+                const detailLine = document.createElement("small");
+                detailLine.className = "place-detail route-detail";
+                const detailLink = document.createElement("a");
+                detailLink.href = ticketInfo?.source || buildPlaceDetailsUrl(place, location, destination);
+                detailLink.target = "_blank";
+                detailLink.rel = "noreferrer noopener";
+                detailLink.textContent = ticketInfo?.source
+                  ? "施設の公式情報を開く ↗"
+                  : "Googleマップで場所の詳細を見る ↗";
+                detailLine.append(detailLink);
+                info.append(detailLine);
+              }
+
+              if (!place.recommendation) {
+                const ticketDetails = document.createElement("small");
+                ticketDetails.className = "ticket-info";
+                const ticketInput = document.createElement("input");
+                ticketInput.type = "number";
+                ticketInput.min = "0";
+                ticketInput.step = "50";
+                ticketInput.inputMode = "numeric";
+                ticketInput.setAttribute("aria-label", place.name + "の大人1名分の入場料（円）");
+                ticketInput.dataset.ticketCost = "true";
+                const placeKey = normalizePlaceName(place.name);
+                const savedAmount = ticketOverrides.get(placeKey);
+                const suggestedAmount = ticketInfo?.amount;
+                ticketInput.value = savedAmount !== undefined
+                  ? savedAmount
+                  : suggestedAmount === null || suggestedAmount === undefined ? "" : String(suggestedAmount);
+                ticketInput.placeholder = "未確認";
+                ticketInput.addEventListener("input", () => {
+                  ticketOverrides.set(placeKey, ticketInput.value);
+                  updateTicketTotal();
+                });
+                ticketDetails.append("入場料（大人1名）", ticketInput, "円");
+                if (ticketInfo?.note) ticketDetails.append(" — " + ticketInfo.note);
+                else if (!ticketInfo) ticketDetails.append(" — 未確認のため入力できます");
+                if (ticketInfo?.source) {
+                  const feeSource = document.createElement("a");
+                  feeSource.href = ticketInfo.source;
+                  feeSource.target = "_blank";
+                  feeSource.rel = "noreferrer noopener";
+                  feeSource.textContent = "公式料金";
+                  ticketDetails.append(" · ", feeSource);
+                }
+                info.append(ticketDetails);
+              }
+
+              if (photo) {
+                const credit = document.createElement("small");
+                credit.className = "place-credit";
+                const source = document.createElement("a");
+                source.href = photo.page;
+                source.target = "_blank";
+                source.rel = "noreferrer noopener";
+                source.textContent = "写真: " + photo.credit;
+                const license = document.createElement("a");
+                license.href = photo.licenseUrl;
+                license.target = "_blank";
+                license.rel = "noreferrer noopener";
+                license.textContent = photo.license;
+                credit.append(source, " · ", license);
+                info.append(credit);
+              }
+              item.append(info);
               list.append(item);
             });
             section.append(list);
@@ -897,61 +1483,64 @@
           fragment.append(section);
         });
 
-        if (itinerary.unmatched.length > 0) {
-          const unmatchedHeading = document.createElement("h3");
-          unmatchedHeading.textContent = "地図データで見つからなかった希望スポット";
-          fragment.append(unmatchedHeading);
-          const unmatchedList = document.createElement("ul");
-          for (const name of itinerary.unmatched) {
-            const item = document.createElement("li");
-            item.textContent = name + " — 地図データに登録がないか、検索範囲外です。行き先を絞るか、表記を確認してください。";
-            unmatchedList.append(item);
-          }
-          fragment.append(unmatchedList);
-        }
-
         planOutput.replaceChildren(fragment);
+        updateTicketTotal();
       }
 
-      async function makeTravelPlan() {
+      function makeTravelPlan() {
         const destination = destinationInput.value.trim();
+        const origin = originInput.value.trim();
         const dayCount = daysInput.valueAsNumber;
         if (!destination) throw new Error("行き先を入力するか、音声内容を反映してください。");
         if (!Number.isInteger(dayCount) || dayCount < 1 || dayCount > 14) {
           throw new Error("旅行日数は1〜14日の整数で指定してください。");
         }
-
-        const endpoints = currentEndpoints();
         const requestedNames = mustSeeInput.value
           .split(/[\n、,，;；]+/u)
           .map((name) => name.trim())
           .filter(Boolean)
           .slice(0, 12);
-        const radius = Math.min(30000, 10000 + (dayCount - 1) * 4000);
         planOutput.replaceChildren();
 
-        setStatus("行き先を検索しています...");
-        const location = await geocodeDestination(destination, endpoints.geocoder);
-        setStatus("OpenStreetMapから周辺の観光地を検索しています...");
-        const elements = await fetchAttractions(location, radius, requestedNames, endpoints.overpass);
-        const attractions = parseAttractions(elements);
-        if (attractions.length === 0) {
-          throw new Error("周辺の観光地が地図データに見つかりませんでした。別の行き先やAPIをお試しください。");
-        }
+        const guide = findDestinationGuide(destination);
+        const location = guide
+          ? guide.location
+          : { displayName: destination, lat: 0, lon: 0 };
+        const attractions = guide
+          ? guide.attractions
+          : requestedNames.map((name) => localPlace(name, "希望スポット", 0, 0, [name]));
+        const travelSettings = {
+          origin,
+          originTravelMinutes: ORIGIN_TRAVEL_ESTIMATE_MINUTES,
+          departureTime: departureTimeInput.value || "08:00",
+          mode: travelModeInput.value,
+          date: travelDateInput.value,
+          centerName: location.displayName || destination,
+        };
 
+        setStatus("候補とおすすめアイデアを組み合わせて旅程を作っています...");
         const itinerary = buildItinerary(location, attractions, requestedNames, dayCount);
-        renderItinerary(destination, location, radius, itinerary, dayCount);
-        const unmatchedText = itinerary.unmatched.length > 0
-          ? " 希望スポット" + itinerary.unmatched.length + "か所は地図データで確認できませんでした。"
-          : "";
-        setStatus(attractions.length + "か所の候補から" + dayCount + "日分の予定を作りました。" + unmatchedText);
+        renderItinerary(destination, location, itinerary, dayCount, Boolean(guide), travelSettings);
+        const scheduledCount = itinerary.days.reduce((total, day) => total + day.length, 0);
+        const statusText = itinerary.recommendationCount > 0
+          ? "おすすめアイデアを" + itinerary.recommendationCount + "件加えて" + dayCount + "日分のプランを作りました。"
+          : guide
+            ? "内蔵候補から" + scheduledCount + "か所を使って" + dayCount + "日分のプランを作りました。"
+            : "入力された希望スポットから" + dayCount + "日分のプランを作りました。";
+        setStatus(statusText);
       }
 
       recordStartButton.addEventListener("click", startRecording);
       recordStopButton.addEventListener("click", stopRecording);
+      recordRetakeButton.addEventListener("click", retakeRecording);
       applyTranscriptButton.addEventListener("click", applyTranscriptConditions);
       makePlanButton.addEventListener("click", () => runExclusive(makeTravelPlan));
-      saveApiSettingsButton.addEventListener("click", saveApiSettings);
+      for (const chip of document.querySelectorAll("[data-destination]")) {
+        chip.addEventListener("click", () => {
+          destinationInput.value = chip.dataset.destination;
+          destinationInput.focus();
+        });
+      }
 
       window.addEventListener("pagehide", () => {
         leavingPage = true;
@@ -972,7 +1561,6 @@
         }
       });
 
-      loadSavedEndpoints();
       updateControls();
     </script>
   </body>
